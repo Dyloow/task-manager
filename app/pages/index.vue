@@ -14,6 +14,10 @@ function parseFilter<T extends string>(value: unknown, schema: z.ZodType<T>): T 
   return result.success ? result.data : ('all' as T)
 }
 
+function queryValue(filter: string): string | undefined {
+  return filter === 'all' ? undefined : filter
+}
+
 function formatLabel(value: string) {
   return value.replace('_', ' ')
 }
@@ -24,10 +28,17 @@ const store = useTasksStore()
 
 // Seed the store filters from the URL before the first fetch so a shared,
 // filtered link renders the same list on first paint.
-store.setFilters({
-  status: parseFilter(route.query.status, statusFilterSchema),
-  priority: parseFilter(route.query.priority, priorityFilterSchema)
-})
+const initialStatus = parseFilter(route.query.status, statusFilterSchema)
+const initialPriority = parseFilter(route.query.priority, priorityFilterSchema)
+store.setFilters({ status: initialStatus, priority: initialPriority })
+
+// An invalid query value (e.g. `?status=foo`) silently fell back to 'all':
+// drop it from the URL so it doesn't keep claiming a filter that isn't applied.
+if (queryValue(initialStatus) !== route.query.status || queryValue(initialPriority) !== route.query.priority) {
+  router.replace({
+    query: { ...route.query, status: queryValue(initialStatus), priority: queryValue(initialPriority) }
+  })
+}
 
 const { pending, error, refresh } = await useAsyncData('tasks', () => store.fetchTasks())
 
@@ -48,13 +59,7 @@ let syncingFromRoute = false
 
 watch([statusFilter, priorityFilter], ([status, priority]) => {
   if (syncingFromRoute) return
-  router.replace({
-    query: {
-      ...route.query,
-      status: status === 'all' ? undefined : status,
-      priority: priority === 'all' ? undefined : priority
-    }
-  })
+  router.replace({ query: { ...route.query, status: queryValue(status), priority: queryValue(priority) } })
 })
 
 watch(
