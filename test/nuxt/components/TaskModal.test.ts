@@ -171,9 +171,22 @@ describe('TaskModal', () => {
     await wrapper.vm.$nextTick()
     // A click dispatched directly on the <dialog> element is a backdrop
     // click: clicking its content would target a descendant instead.
+    await wrapper.find('dialog').trigger('mousedown')
     await wrapper.find('dialog').trigger('click')
 
     expect(wrapper.find('dialog').attributes('open')).toBeUndefined()
+  })
+
+  it('a text selection released on the backdrop does not close the dialog', async () => {
+    const wrapper = await mountSuspended(TaskModal, { props: { pending: false } })
+
+    api(wrapper).openCreate('todo')
+    await wrapper.vm.$nextTick()
+    // The press starts in the title field, the release lands on the backdrop.
+    await wrapper.find('#task-title').trigger('mousedown')
+    await wrapper.find('dialog').trigger('click')
+
+    expect(wrapper.find('dialog').attributes('open')).toBeDefined()
   })
 
   it('clicking inside the modal content does not close it', async () => {

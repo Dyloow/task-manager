@@ -165,7 +165,7 @@ Historique des filtres : chaque changement de filtre fait un `router.push`, donc
 - [x] Suppression d'une tâche depuis la modale (confirmation par second clic)
 - [x] Filtrage par statut (sélectionne la ou les colonnes affichées) et par priorité (masque des cartes dans chaque colonne), reflété dans l'URL
 - [x] Interface responsive (mobile : défilement horizontal des colonnes avec ancrage ; bureau : colonnes côte à côte), Tailwind uniquement
-- [x] Retours d'erreur explicites : échec de chargement (avec reprise), échec de déplacement (bannière + tableau resynchronisé), échec d'édition (bannière, ou erreurs de champ en ligne sur un `400`)
+- [x] Retours d'erreur explicites : échec de chargement (avec reprise), échec de déplacement (bannière + tableau resynchronisé), échec de création ou d'édition (message dans la modale, ou erreurs de champ en ligne sur un `400`)
 - [x] Notification quand une tâche créée est masquée par les filtres actifs, avec une action pour tout afficher
 
 ## Pistes d'amélioration

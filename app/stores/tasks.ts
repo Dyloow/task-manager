@@ -191,8 +191,8 @@ export const useTasksStore = defineStore('tasks', () => {
       const body = { status, beforeId } satisfies MoveTaskInput
       await $fetch<Task>(`/api/tasks/${id}/move`, { method: 'POST', body })
     } catch (cause) {
+      // The banner says the board was resynced: `resyncAfterMoveFailure` sets it once that is true.
       const failureState = toActionErrorState(toApiError(cause), 'move')
-      error.value = failureState
       if (pendingIds.value.length === 1) {
         // Only this call is pending (its own entry, not yet cleared): safe to resync right away.
         await resyncAfterMoveFailure(failureState)

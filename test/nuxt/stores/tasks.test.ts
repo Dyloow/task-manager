@@ -340,7 +340,8 @@ describe('useTasksStore', () => {
 
     // The delete is still in flight: the resync must not have run yet.
     expect(getCalls).toBe(0)
-    expect(store.error?.message).toBe('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
+    // Not resynced yet, so no banner claiming it was.
+    expect(store.error).toBeNull()
 
     resolveOtherDelete()
     await deletePromise

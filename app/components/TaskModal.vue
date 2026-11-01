@@ -60,12 +60,20 @@ function close() {
   dialogRef.value?.close()
 }
 
+// The backdrop is the `<dialog>` element itself; a press on its content
+// targets a descendant. Both ends of the click must hit the backdrop, so a
+// text selection that ends outside the form does not close the modal.
+let pressStartedOnBackdrop = false
+
+function handleBackdropMousedown(event: MouseEvent) {
+  pressStartedOnBackdrop = event.target === dialogRef.value
+}
+
 function handleBackdropClick(event: MouseEvent) {
-  // The backdrop is the `<dialog>` element itself; a click on its content
-  // targets a descendant, never the dialog, so this only fires for the backdrop.
-  if (event.target === dialogRef.value) {
+  if (pressStartedOnBackdrop && event.target === dialogRef.value) {
     close()
   }
+  pressStartedOnBackdrop = false
 }
 
 function handleDialogClosed() {
@@ -112,6 +120,7 @@ defineExpose({ openCreate, openEdit, close })
     class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-card border border-border bg-surface p-0 text-ink backdrop:bg-ink/50"
     @close="handleDialogClosed"
     @cancel="cancelDeleteConfirm"
+    @mousedown="handleBackdropMousedown"
     @click="handleBackdropClick"
   >
     <div class="flex flex-col gap-4 p-5">

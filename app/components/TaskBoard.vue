@@ -35,8 +35,11 @@ function registerColumnRef(status: TaskStatus, instance: ColumnHandle | null) {
   else columnRefs.delete(status)
 }
 
-function focusColumnAddButton(status: TaskStatus) {
-  columnRefs.get(status)?.focusAddButton()
+/** Returns false when that column is not rendered (hidden by the status filter). */
+function focusColumnAddButton(status: TaskStatus): boolean {
+  const column = columnRefs.get(status)
+  column?.focusAddButton()
+  return Boolean(column)
 }
 
 defineExpose({ focusColumnAddButton })

@@ -13,7 +13,7 @@ const modalRef = ref<{
   openEdit: (task: Task) => void
   close: () => void
 } | null>(null)
-const boardRef = ref<{ focusColumnAddButton: (status: TaskStatus) => void } | null>(null)
+const boardRef = ref<{ focusColumnAddButton: (status: TaskStatus) => boolean } | null>(null)
 const isSubmitting = ref(false)
 const modalError = ref<ApiErrorState | null>(null)
 const isCreatedTaskHidden = ref(false)
@@ -70,6 +70,15 @@ async function handleCreate(input: CreateTaskInput) {
   }
 }
 
+const newTaskButtonRef = ref<HTMLButtonElement | null>(null)
+
+// Focus the column the task landed in, or the header action when the status filter hides it.
+function focusColumn(status: TaskStatus) {
+  if (!boardRef.value?.focusColumnAddButton(status)) {
+    newTaskButtonRef.value?.focus()
+  }
+}
+
 async function handleSave(id: string, patch: UpdateTaskInput) {
   modalError.value = null
   isSubmitting.value = true
@@ -80,7 +89,7 @@ async function handleSave(id: string, patch: UpdateTaskInput) {
       // The card just left this column for another one: the dialog's native
       // focus-return would target a now-unmounted trigger, so send focus to
       // where the task landed instead.
-      nextTick(() => boardRef.value?.focusColumnAddButton(updated.status))
+      nextTick(() => focusColumn(updated.status))
     }
   } catch {
     modalError.value = store.error
@@ -97,7 +106,7 @@ function handleDelete(id: string) {
   if (deletedStatus) {
     // The card (and the dialog's focus-return target) is gone: land focus
     // on its column instead of letting it fall back to <body>.
-    nextTick(() => boardRef.value?.focusColumnAddButton(deletedStatus))
+    nextTick(() => focusColumn(deletedStatus))
   }
 }
 </script>
@@ -114,6 +123,7 @@ function handleDelete(id: string) {
         <button
           type="button"
           class="shrink-0 rounded-control bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          ref="newTaskButtonRef"
           @click="handleOpenCreate()"
         >
           + Nouvelle tâche
