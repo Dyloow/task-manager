@@ -17,7 +17,16 @@ export default defineConfig({
           include: ['test/nuxt/**/*.test.ts'],
           environment: 'nuxt'
         }
-      })
+      }),
+      {
+        test: {
+          name: 'e2e',
+          include: ['test/e2e/**/*.test.ts'],
+          environment: 'node',
+          testTimeout: 120_000,
+          hookTimeout: 120_000
+        }
+      }
     ]
   }
 })
