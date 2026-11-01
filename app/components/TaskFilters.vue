@@ -20,18 +20,17 @@ const priorityOptions: PriorityFilter[] = ['all', ...taskPrioritySchema.options]
 
 <template>
   <div class="flex flex-col gap-3">
-    <div role="tablist" aria-label="Filtrer par statut" class="flex gap-2 overflow-x-auto pb-1">
+    <div role="group" aria-label="Filtrer par statut" class="flex gap-2 overflow-x-auto pb-1">
       <button
         v-for="option in statusOptions"
         :key="option"
         type="button"
-        role="tab"
-        :aria-selected="status === option"
+        :aria-pressed="status === option"
         class="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         :class="
           status === option
             ? 'border-accent bg-accent text-white'
-            : 'border-border bg-surface text-ink-soft hover:border-border-strong hover:text-ink'
+            : 'border-border-control bg-surface text-ink-soft hover:border-ink-soft hover:text-ink'
         "
         @click="emit('update:status', option)"
       >
@@ -45,7 +44,7 @@ const priorityOptions: PriorityFilter[] = ['all', ...taskPrioritySchema.options]
       <select
         id="priority-filter"
         :value="priority"
-        class="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        class="rounded-control border border-border-control bg-surface px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         @change="emit('update:priority', ($event.target as HTMLSelectElement).value as PriorityFilter)"
       >
         <option v-for="option in priorityOptions" :key="option" :value="option">{{ PRIORITY_FILTER_LABELS[option] }}</option>

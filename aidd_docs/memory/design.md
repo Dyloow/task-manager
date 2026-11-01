@@ -20,7 +20,8 @@
 
 - Small presentational components (task card, badges, filters, form) driven by props and emits; only pages and containers talk to the store.
 - Every async surface has loading, empty and error states.
-- Status tabs (`TaskFilters`) are a `role="tablist"`/`role="tab"` segmented control, scrollable on mobile; priority uses a native `<select>`. Priority on a card is a small dot + text label (`TaskCard`), never color alone.
+- Status filter is a `role="group"` of `aria-pressed` toggle buttons (not `tablist`/`tab`: there is no tabpanel or roving tabindex), scrollable on mobile; priority uses a native `<select>`. Priority on a card is a small dot + text label (`TaskCard`), never color alone.
+- A done task's title is struck through and muted (`text-ink-soft line-through`), its card on a slightly muted surface (`bg-canvas`) — still text-labelled by its status select, color is never the only signal.
 - Delete asks for a second click on the same button (label flips to "Confirmer ?"), auto-cancelled after 4s or on blur — no modal.
 
 ## Accessibility

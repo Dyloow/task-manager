@@ -10,8 +10,8 @@ function mockEndpoint(url: string, options: Parameters<typeof registerEndpoint>[
   cleanups.push(registerEndpoint(url, options))
 }
 
-function findStatusTab(wrapper: VueWrapper, label: string) {
-  return wrapper.findAll('[role="tab"]').find((tab) => tab.text().startsWith(label))!
+function findStatusButton(wrapper: VueWrapper, label: string) {
+  return wrapper.findAll('[role="group"] button').find((button) => button.text().startsWith(label))!
 }
 
 afterEach(() => {
@@ -22,7 +22,7 @@ describe('index page', () => {
   // A single continuous mount: the Nuxt app (router, pinia) is shared across
   // a test file, so a second `mountSuspended` call does not reliably reset
   // navigation state. One session, several steps, mirrors real usage anyway.
-  it('keeps the filter tabs and the URL query in sync both ways', async () => {
+  it('keeps the filter buttons and the URL query in sync both ways', async () => {
     mockEndpoint('/api/tasks', { method: 'GET', handler: () => [] })
 
     const wrapper = await mountSuspended(IndexPage, { route: '/' })
@@ -31,14 +31,14 @@ describe('index page', () => {
     // `currentRoute` is the one the page's composable actually reads.
     const currentQuery = () => wrapper.vm.$router.currentRoute.value.query
 
-    expect(findStatusTab(wrapper, 'Toutes').attributes('aria-selected')).toBe('true')
-    expect(findStatusTab(wrapper, 'Terminées').attributes('aria-selected')).toBe('false')
+    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('true')
+    expect(findStatusButton(wrapper, 'Terminées').attributes('aria-pressed')).toBe('false')
 
     await wrapper.vm.$router.push({ query: { status: 'done' } })
     await flushPromises()
 
-    expect(findStatusTab(wrapper, 'Toutes').attributes('aria-selected')).toBe('false')
-    expect(findStatusTab(wrapper, 'Terminées').attributes('aria-selected')).toBe('true')
+    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('false')
+    expect(findStatusButton(wrapper, 'Terminées').attributes('aria-pressed')).toBe('true')
 
     // The invalid-query cleanup is itself an async `router.replace` fired
     // from inside the watcher, with no promise the test can await directly:
@@ -46,6 +46,6 @@ describe('index page', () => {
     await wrapper.vm.$router.push({ query: { status: 'bogus' } })
     await vi.waitUntil(() => currentQuery().status === undefined)
 
-    expect(findStatusTab(wrapper, 'Toutes').attributes('aria-selected')).toBe('true')
+    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('true')
   })
 })

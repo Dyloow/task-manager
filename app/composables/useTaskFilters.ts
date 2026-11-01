@@ -21,6 +21,11 @@ function queryValue(filter: string): string | undefined {
  * the store, and drops any value the schema rejects. Setters only push a new
  * query; they never touch the store directly, so there is one direction of
  * truth and nothing to guard against re-entrant updates.
+ *
+ * Setters `push` so each user-driven filter change gets its own history
+ * entry (Back returns to the previous filter); the watcher's own cleanup of
+ * an invalid value `replace`s instead, since that is a correction, not a
+ * navigation the user should be able to undo with Back.
  */
 export function useTaskFilters() {
   const route = useRoute()
@@ -44,11 +49,11 @@ export function useTaskFilters() {
   )
 
   function setStatus(status: StatusFilter) {
-    return router.replace({ query: { ...route.query, status: queryValue(status) } })
+    return router.push({ query: { ...route.query, status: queryValue(status) } })
   }
 
   function setPriority(priority: PriorityFilter) {
-    return router.replace({ query: { ...route.query, priority: queryValue(priority) } })
+    return router.push({ query: { ...route.query, priority: queryValue(priority) } })
   }
 
   return {

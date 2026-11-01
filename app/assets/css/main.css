@@ -15,6 +15,10 @@
   --color-surface: #ffffff;
   --color-border: #e1e3df;
   --color-border-strong: #c7cac4;
+  /* ~3.7:1 on white: the only border token used on form controls (WCAG 1.4.11
+     needs >=3:1 for a UI component boundary). Card/list borders stay on the
+     lighter `border` token, which is decorative, not an operable boundary. */
+  --color-border-control: #82857e;
 
   --color-ink: #15181c;
   --color-ink-soft: #565d63;

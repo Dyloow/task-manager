@@ -11,7 +11,6 @@ const emit = defineEmits<{
 <template>
   <div
     role="alert"
-    aria-live="assertive"
     class="flex items-start justify-between gap-3 rounded-card border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger-strong"
   >
     <p class="font-medium">{{ message }}</p>

@@ -35,8 +35,10 @@ const formErrors = computed(() => (clientFormErrors.value.length ? clientFormErr
 const titleError = computed(() => fieldErrors.value.title?.[0])
 const descriptionError = computed(() => fieldErrors.value.description?.[0])
 
+// Placeholder stays `ink-soft` (not `ink-faint`, which fails 4.5:1 on white)
+// and adds `italic` so it reads as an example, not as text the user typed.
 const fieldClass =
-  'rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-faint'
+  'rounded-control border border-border-control bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-soft placeholder:italic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-faint'
 
 function reset() {
   title.value = ''
