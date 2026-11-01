@@ -7,6 +7,14 @@ export interface ApiErrorOptions {
   formErrors?: string[]
 }
 
+/** The plain, devalue-serializable shape of an `ApiError`, safe to hold in Pinia state. */
+export interface ApiErrorState {
+  statusCode: number | undefined
+  message: string
+  fieldErrors: Record<string, string[]>
+  formErrors: string[]
+}
+
 /** A `$fetch` failure normalized to one shape, so components never touch fetch internals. */
 export class ApiError extends Error {
   statusCode: number | undefined
@@ -19,6 +27,16 @@ export class ApiError extends Error {
     this.statusCode = options.statusCode
     this.fieldErrors = options.fieldErrors ?? {}
     this.formErrors = options.formErrors ?? []
+  }
+
+  /** A plain-object snapshot for state that gets serialized (the SSR payload cannot devalue a class instance). */
+  toState(): ApiErrorState {
+    return {
+      statusCode: this.statusCode,
+      message: this.message,
+      fieldErrors: this.fieldErrors,
+      formErrors: this.formErrors
+    }
   }
 }
 
@@ -42,13 +60,6 @@ const FALLBACK_MESSAGES: Record<number, string> = {
   500: 'Something went wrong on the server. Please try again.'
 }
 
-function networkError(): ApiError {
-  return new ApiError({
-    statusCode: undefined,
-    message: 'Network error. Check your connection and try again.'
-  })
-}
-
 /**
  * Normalizes any error thrown by `$fetch` against `/api/tasks` into one
  * shape: field and form issues for a 400, a readable message otherwise.
@@ -64,7 +75,10 @@ export function toApiError(error: unknown): ApiError {
   // request never got a response (network failure): it is just `undefined`.
   const statusCode = error.statusCode
   if (statusCode === undefined) {
-    return networkError()
+    return new ApiError({
+      statusCode: undefined,
+      message: 'Network error. Check your connection and try again.'
+    })
   }
 
   const issues = error.data?.data?.issues

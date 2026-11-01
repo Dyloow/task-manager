@@ -200,6 +200,26 @@ describe('useTasksStore', () => {
     expect(store.error?.statusCode).toBe(500)
   })
 
+  it('error state is a plain object, not the ApiError class (SSR payload must be able to serialize it)', async () => {
+    mockEndpoint('/api/tasks', {
+      method: 'GET',
+      handler: () => {
+        throw createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
+      }
+    })
+
+    const store = useTasksStore()
+    await expect(store.fetchTasks()).rejects.toBeInstanceOf(Error)
+
+    expect(store.error).not.toBeInstanceOf(Error)
+    expect(store.error).toEqual({
+      statusCode: 500,
+      message: 'Task data is corrupted',
+      fieldErrors: {},
+      formErrors: []
+    })
+  })
+
   it('removeTask on an already-deleted task (404) stays removed, with no error', async () => {
     const task = makeTask({ id: 'task-1' })
     mockEndpoint('/api/tasks/task-1', {

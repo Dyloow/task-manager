@@ -1,6 +1,5 @@
-import { toRaw } from 'vue'
 import type { CreateTaskInput, Task, TaskPriority, TaskStatus, UpdateTaskInput } from '#shared/types/task'
-import { toApiError, ApiError } from '~/utils/api-error'
+import { toApiError, type ApiErrorState } from '~/utils/api-error'
 
 export type StatusFilter = TaskStatus | 'all'
 export type PriorityFilter = TaskPriority | 'all'
@@ -14,7 +13,8 @@ export const useTasksStore = defineStore('tasks', () => {
   const tasks = ref<Task[]>([])
   const filters = reactive<TaskFilters>({ status: 'all', priority: 'all' })
   const pendingIds = ref<string[]>([])
-  const error = ref<ApiError | null>(null)
+  // A plain object, not the `ApiError` class: the SSR payload (devalue) cannot serialize a class instance.
+  const error = ref<ApiErrorState | null>(null)
 
   const visibleTasks = computed(() =>
     tasks.value
@@ -36,10 +36,7 @@ export const useTasksStore = defineStore('tasks', () => {
     return pendingIds.value.includes(id)
   }
 
-  // Concurrent mutations can target the same id (e.g. two quick status
-  // changes). `pendingIds` holds one entry per in-flight call on that id, so
-  // `isPending` stays true until every one of them has cleared its own entry
-  // (plain occurrence counting via array multiplicity, not a Set/Map).
+  // One array entry per in-flight call on that id, so a concurrent mutation on the same task doesn't clear it early.
   function markPending(id: string) {
     pendingIds.value = [...pendingIds.value, id]
   }
@@ -57,7 +54,7 @@ export const useTasksStore = defineStore('tasks', () => {
       return tasks.value
     } catch (cause) {
       const apiError = toApiError(cause)
-      error.value = apiError
+      error.value = apiError.toState()
       throw apiError
     }
   }
@@ -69,7 +66,7 @@ export const useTasksStore = defineStore('tasks', () => {
       return task
     } catch (cause) {
       const apiError = toApiError(cause)
-      error.value = apiError
+      error.value = apiError.toState()
       throw apiError
     }
   }
@@ -98,7 +95,7 @@ export const useTasksStore = defineStore('tasks', () => {
       if (currentIndex !== -1 && toRaw(tasks.value[currentIndex]) === optimistic) {
         tasks.value[currentIndex] = previous
       }
-      error.value = toApiError(cause)
+      error.value = toApiError(cause).toState()
     } finally {
       clearPending(id)
     }
@@ -121,7 +118,7 @@ export const useTasksStore = defineStore('tasks', () => {
         // other mutations may have changed the rest of the list meanwhile.
         const insertAt = Math.min(index, tasks.value.length)
         tasks.value = [...tasks.value.slice(0, insertAt), removed, ...tasks.value.slice(insertAt)]
-        error.value = apiError
+        error.value = apiError.toState()
       }
     } finally {
       clearPending(id)
