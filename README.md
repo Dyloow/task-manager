@@ -19,7 +19,7 @@ Petit gestionnaire de tâches : liste, création, changement de statut, suppress
 
 ## Prérequis
 
-- Node.js 24 (testé avec `v24.13.1`, voir `node -v`)
+- Node.js 22.22+ ou 24.15+ (contrainte posée par `@nuxt/nitro-server`, voir `engines` dans `package.json` ; `.nvmrc` fixe la version 24)
 - npm (fourni avec Node)
 
 ## Installation et lancement
@@ -47,7 +47,7 @@ npm run build
 npm run preview
 ```
 
-`build` compile l'application dans `.output/`, `preview` sert ce build localement.
+`build` compile l'application dans `.output/`, `preview` sert ce build localement. Le stockage utilisant un chemin relatif, les données du build servi en `preview` vivent dans `.output/.data/tasks/list`, distinctes de celles de `npm run dev` (`.data/tasks/list`) : elles repartent du seed à chaque `npm run build`.
 
 ### Vérifications
 
@@ -76,7 +76,7 @@ Pas de base de données : hors périmètre de l'exercice. Les tâches sont persi
   npm run dev
   ```
 
-- **Donnée corrompue** : si le contenu stocké ne respecte pas le schéma Zod d'une tâche (édition manuelle du fichier, par exemple), l'API répond `500` sans jamais écraser le fichier existant : la donnée invalide reste disponible pour investigation, le détail de l'erreur est loggé côté serveur et jamais renvoyé au client.
+- **Donnée corrompue** : toute lecture passe par le même dépôt de tâches, donc si le contenu stocké ne respecte pas le schéma Zod d'une tâche (édition manuelle du fichier, par exemple), chaque route (`GET`, `POST`, `PATCH`, `DELETE`) répond `500` avec le message « Task data is corrupted », sans jamais écraser le fichier existant : la donnée invalide reste disponible pour investigation, le détail de l'erreur est loggé côté serveur et jamais renvoyé au client.
 
 ## Architecture
 
@@ -117,7 +117,7 @@ Base `/api`, JSON, sans versionnage. Le serveur génère `id`, `createdAt` et `u
 | `PATCH`  | `/api/tasks/:id`  | `200` tâche mise à jour | `400` corps invalide · `404` id inconnu |
 | `DELETE` | `/api/tasks/:id`  | `204` sans contenu     | `404` id inconnu                      |
 
-Une erreur `400` renvoie le détail de validation Zod dans `data.issues` (`fieldErrors` par champ, `formErrors` globaux) ; toute erreur est levée avec `createError` (`h3`), donc reçue côté client comme `{ statusCode, statusMessage, data }`.
+Un `400` levé après l'analyse du corps (champ invalide, manquant...) renvoie le détail de validation Zod dans `data.issues` (`fieldErrors` par champ, `formErrors` globaux). Un `400` levé avant, parce que le corps n'est pas un JSON valide, n'a pas ce détail : il vient de `h3` lui-même (`readBody`), pas du schéma. Toute erreur est levée avec `createError` (`h3`), donc reçue côté client comme `{ statusCode, statusMessage, data }`.
 
 ## Choix techniques et compromis
 
@@ -128,11 +128,11 @@ Une erreur `400` renvoie le détail de validation Zod dans `data.issues` (`field
 | Validation Zod à chaque lecture du fichier, pas seulement à l'écriture  | Détecte un fichier corrompu ou édité à la main avant de le renvoyer au client, au prix d'un `safeParse` sur chaque requête |
 | Mise à jour de statut et suppression optimistes, création pessimiste    | Statut et suppression sont des issues prévisibles : l'UI répond immédiatement et annule la mutation localement en cas d'échec (rollback ciblé : seulement si rien d'autre n'a écrit entre-temps) ; la création attend le serveur, qui seul génère l'identifiant |
 | Erreurs normalisées en un objet `ApiErrorState` sérialisable             | Une instance de classe ne survit pas à la sérialisation du payload SSR (`devalue`) ; chaque action du store porte son propre message utilisateur en français, découplé du message HTTP brut |
-| Filtres portés par l'URL (`useTaskFilters`), un seul sens de synchronisation | La query string est la source de vérité : un watcher unique et immédiat la pousse vers le store, jamais l'inverse ; une vue filtrée reste partageable et rechargeable. Un changement voulu par l'utilisateur fait un `push` (entrée d'historique, `Précédent` fonctionne) ; la correction d'une valeur invalide fait un `replace` (ce n'est pas une navigation à annuler) |
+| Filtres portés par l'URL (`useTaskFilters`), un seul sens de synchronisation | La query string est la source de vérité : un watcher unique et immédiat la pousse vers le store, jamais l'inverse ; une vue filtrée reste partageable et rechargeable. Un changement individuel de filtre fait un `push` (entrée d'historique, `Précédent` fonctionne) ; `resetFilters` efface statut et priorité en un seul `push` combiné, pas deux, pour ne pas laisser une entrée d'historique intermédiaire que l'utilisateur n'a jamais vue ; la correction d'une valeur invalide par le watcher fait un `replace` (ce n'est pas une navigation à annuler) |
 | Composants de présentation (props/emit), seule la page parle au store   | Composants testables et réutilisables indépendamment de Pinia |
 | Tailwind v4 seul, jetons déclarés avec `@theme`                         | Pas de bibliothèque de composants ; palette et rayons centralisés dans `app/assets/css/main.css` |
 | Interface en français, code et valeurs d'énumération en anglais         | Le public visé est francophone ; les identifiants restent des clés stables côté code |
-| Suppression confirmée par un second clic (auto-annulé après 4s) plutôt qu'une modale | Évite une suppression accidentelle sans ajouter de composant modal |
+| Suppression confirmée par un second clic (auto-annulé après 4 s) plutôt qu'une modale | Évite une suppression accidentelle sans ajouter de composant modal |
 | Trois projets de tests (unit / nuxt / e2e)                              | Unit pour la logique serveur et les schémas en Node pur, nuxt pour le store et les composants avec `$fetch` mocké, e2e sur un serveur réel avec stockage en mémoire (dont un test de 20 requêtes concurrentes) ; aucun test de navigateur (Playwright) n'est en place |
 | Pas de base de données, pas d'authentification, pas de backend séparé   | Hors périmètre de l'exercice (budget de 3 à 4 heures) |
 
