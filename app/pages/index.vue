@@ -6,8 +6,8 @@ import type { PriorityFilter, StatusFilter } from '~/stores/tasks'
 const statusFilterSchema = z.union([taskStatusSchema, z.literal('all')])
 const priorityFilterSchema = z.union([taskPrioritySchema, z.literal('all')])
 
-const statusOptions: StatusFilter[] = ['all', 'todo', 'in_progress', 'done']
-const priorityOptions: PriorityFilter[] = ['all', 'low', 'medium', 'high']
+const statusOptions: StatusFilter[] = ['all', ...taskStatusSchema.options]
+const priorityOptions: PriorityFilter[] = ['all', ...taskPrioritySchema.options]
 
 function parseFilter<T extends string>(value: unknown, schema: z.ZodType<T>): T {
   const result = schema.safeParse(value)
@@ -41,8 +41,13 @@ const priorityFilter = computed<PriorityFilter>({
   set: (value) => store.setFilters({ priority: value })
 })
 
-// Keep the URL in sync so a filtered view stays shareable and reloadable.
+// Keep the URL and the store filters in sync both ways: picking a filter
+// updates the query, and navigating (back/forward, a shared link) updates
+// the filters. The flag stops the two watchers from bouncing off each other.
+let syncingFromRoute = false
+
 watch([statusFilter, priorityFilter], ([status, priority]) => {
+  if (syncingFromRoute) return
   router.replace({
     query: {
       ...route.query,
@@ -51,6 +56,20 @@ watch([statusFilter, priorityFilter], ([status, priority]) => {
     }
   })
 })
+
+watch(
+  () => route.query,
+  (query) => {
+    syncingFromRoute = true
+    store.setFilters({
+      status: parseFilter(query.status, statusFilterSchema),
+      priority: parseFilter(query.priority, priorityFilterSchema)
+    })
+    nextTick(() => {
+      syncingFromRoute = false
+    })
+  }
+)
 </script>
 
 <template>
@@ -75,7 +94,7 @@ watch([statusFilter, priorityFilter], ([status, priority]) => {
     <p v-if="pending" class="mt-4">Loading tasks…</p>
 
     <div v-else-if="error" role="alert" class="mt-4">
-      <p>Could not load tasks.</p>
+      <p>{{ error.message }}</p>
       <button type="button" @click="refresh()">Retry</button>
     </div>
 
