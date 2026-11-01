@@ -26,34 +26,25 @@ describe('TaskCard', () => {
     expect(wrapper.text()).toContain('Élevée')
   })
 
-  it('emits update:status when the status select changes', async () => {
-    const wrapper = await mountSuspended(TaskCard, { props: { task: makeTask(), pending: false } })
+  it('strikes through the title and mutes it for a done task', async () => {
+    const wrapper = await mountSuspended(TaskCard, { props: { task: makeTask({ status: 'done' }), pending: false } })
 
-    await wrapper.find('select').setValue('done')
-
-    expect(wrapper.emitted('update:status')?.[0]).toEqual(['done'])
+    expect(wrapper.find('h3').classes()).toContain('line-through')
   })
 
-  it('requires a second click on delete before emitting, and the first click can be cancelled on blur', async () => {
+  it('emits open on click', async () => {
     const wrapper = await mountSuspended(TaskCard, { props: { task: makeTask(), pending: false } })
-    const deleteButton = wrapper.find('button')
 
-    await deleteButton.trigger('click')
-    expect(wrapper.emitted('delete')).toBeUndefined()
-    expect(deleteButton.text()).toBe('Confirmer ?')
+    await wrapper.find('button').trigger('click')
 
-    await deleteButton.trigger('blur')
-    expect(deleteButton.text()).toBe('Supprimer')
-
-    await deleteButton.trigger('click')
-    await deleteButton.trigger('click')
-    expect(wrapper.emitted('delete')).toHaveLength(1)
+    expect(wrapper.emitted('open')).toHaveLength(1)
   })
 
-  it('disables the status select and the delete button while pending', async () => {
+  it('is a focusable button, disabled while pending', async () => {
     const wrapper = await mountSuspended(TaskCard, { props: { task: makeTask(), pending: true } })
 
-    expect((wrapper.find('select').element as HTMLSelectElement).disabled).toBe(true)
-    expect((wrapper.find('button').element as HTMLButtonElement).disabled).toBe(true)
+    const button = wrapper.find('button')
+    expect(button.element.tagName).toBe('BUTTON')
+    expect((button.element as HTMLButtonElement).disabled).toBe(true)
   })
 })

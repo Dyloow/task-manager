@@ -1,20 +1,15 @@
 import type { Task } from '#shared/types/task'
-import type { VueWrapper } from '@vue/test-utils'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { createError, readBody } from 'h3'
-import { nextTick } from 'vue'
+import { createError } from 'h3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import IndexPage from '~/pages/index.vue'
+import TaskBoard from '~/components/TaskBoard.vue'
 
 const cleanups: Array<() => void> = []
 
 function mockEndpoint(url: string, options: Parameters<typeof registerEndpoint>[1]) {
   cleanups.push(registerEndpoint(url, options))
-}
-
-function findStatusButton(wrapper: VueWrapper, label: string) {
-  return wrapper.findAll('[role="group"] button').find((button) => button.text().startsWith(label))!
 }
 
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -31,6 +26,10 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   }
 }
 
+function cardTitles(wrapper: { findAll: (selector: string) => { text: () => string }[] }) {
+  return wrapper.findAll('h3').map((h3) => h3.text())
+}
+
 afterEach(() => {
   while (cleanups.length) cleanups.pop()!()
 })
@@ -38,145 +37,66 @@ afterEach(() => {
 describe('index page', () => {
   // A single continuous mount: the Nuxt app (router, pinia, the `useAsyncData`
   // 'tasks' cache) is shared across a test file, so a second `mountSuspended`
-  // call does not reliably start from a clean state (a later mount can see
-  // the first mount's cached data instead of calling its own endpoint mock).
-  // One session, several ordered steps, mirrors real usage anyway.
-  it('covers the filter/URL sync, create, 400 handling, pending state and a mutation failure banner with rollback', async () => {
-    const seed = makeTask()
-    mockEndpoint('/api/tasks', { method: 'GET', handler: () => [seed] })
+  // call does not reliably start from a clean state. One session, several
+  // ordered steps, mirrors real usage anyway.
+  it('covers the board rendering, the filter/URL sync and a move failure banner with resync', async () => {
+    const todo = makeTask({ id: 'todo-1', title: 'Tâche à faire', status: 'todo', priority: 'high', position: 0 })
+    const inProgress = makeTask({ id: 'prog-1', title: 'Tâche en cours', status: 'in_progress', priority: 'low', position: 0 })
+    const done = makeTask({ id: 'done-1', title: 'Tâche faite', status: 'done', priority: 'medium', position: 0 })
+    const seed = [todo, inProgress, done]
+    mockEndpoint('/api/tasks', { method: 'GET', handler: () => seed })
 
-    let resolveCreate!: (task: Task) => void
-    mockEndpoint('/api/tasks', {
+    let rejectMove!: (error: unknown) => void
+    mockEndpoint('/api/tasks/todo-1/move', {
       method: 'POST',
-      handler: async (event) => {
-        const body = await readBody<{ title: string }>(event)
-        if (body.title === 'Titre déjà pris') {
-          throw createError({
-            statusCode: 400,
-            statusMessage: 'Invalid request body',
-            data: { issues: { formErrors: [], fieldErrors: { title: ['Ce titre est déjà utilisé.'] } } }
-          })
-        }
-        return new Promise<Task>((resolve) => {
-          resolveCreate = resolve
-        })
-      }
-    })
-
-    let rejectUpdate!: (error: unknown) => void
-    mockEndpoint('/api/tasks/seed-1', {
-      method: 'PATCH',
-      handler: () => new Promise((_resolve, reject) => { rejectUpdate = reject })
+      handler: () => new Promise((_resolve, reject) => { rejectMove = reject })
     })
 
     const wrapper = await mountSuspended(IndexPage, { route: '/' })
-    // `wrapper.vm.$route` is a snapshot taken at mount and does not track
-    // later navigation in this harness; the router's own reactive
-    // `currentRoute` is the one the page's composable actually reads.
     const currentQuery = () => wrapper.vm.$router.currentRoute.value.query
 
-    // --- filters stay in sync with the URL both ways ---
-    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('true')
-    expect(findStatusButton(wrapper, 'Terminées').attributes('aria-pressed')).toBe('false')
+    // --- the board renders every column with its task ---
+    expect(cardTitles(wrapper)).toEqual(['Tâche à faire', 'Tâche en cours', 'Tâche faite'])
 
+    // --- status filter narrows the board to one column, stays in sync with the URL ---
     await wrapper.vm.$router.push({ query: { status: 'done' } })
     await flushPromises()
 
-    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('false')
-    expect(findStatusButton(wrapper, 'Terminées').attributes('aria-pressed')).toBe('true')
+    expect(cardTitles(wrapper)).toEqual(['Tâche faite'])
 
-    // The invalid-query cleanup is itself an async `router.replace` fired
-    // from inside the watcher, with no promise the test can await directly:
-    // poll until the navigation it triggers has actually landed.
+    // An invalid query value is cleaned up back to "all" by the filters watcher.
     await wrapper.vm.$router.push({ query: { status: 'bogus' } })
     await vi.waitUntil(() => currentQuery().status === undefined)
-
-    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('true')
-    expect(wrapper.findAll('li').length).toBe(1)
-
-    // --- 400 on create: inline field error, no banner, list unchanged, input kept ---
-    await wrapper.find('#task-title').setValue('Titre déjà pris')
-    await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.find('#task-title-error').text()).toBe('Ce titre est déjà utilisé.')
-    expect(wrapper.findAll('[role="alert"]')).toHaveLength(0)
-    expect(wrapper.findAll('li').length).toBe(1)
-    expect((wrapper.find('#task-title').element as HTMLInputElement).value).toBe('Titre déjà pris')
+    expect(cardTitles(wrapper)).toEqual(['Tâche à faire', 'Tâche en cours', 'Tâche faite'])
 
-    // --- valid create: controls disabled while pending, list grows, form resets ---
-    await wrapper.find('#task-title').setValue('Préparer la démo')
-    await wrapper.find('form').trigger('submit')
+    // --- priority filter narrows every column, without hiding the others ---
+    await wrapper.vm.$router.push({ query: { priority: 'high' } })
     await flushPromises()
 
-    expect((wrapper.find('#task-title').element as HTMLInputElement).disabled).toBe(true)
-    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    expect(cardTitles(wrapper)).toEqual(['Tâche à faire'])
 
-    resolveCreate(makeTask({ id: 'new-task', title: 'Préparer la démo' }))
+    await wrapper.vm.$router.push({ query: { priority: undefined } })
     await flushPromises()
-    await vi.waitUntil(() => wrapper.findAll('li').length === 2)
 
-    expect(wrapper.findAll('li').length).toBe(2)
-    expect((wrapper.find('#task-title').element as HTMLInputElement).value).toBe('')
-    expect((wrapper.find('#task-title').element as HTMLInputElement).disabled).toBe(false)
+    // --- a failed move shows the French banner and resyncs from the server ---
+    const serverList = [todo, inProgress, done]
+    mockEndpoint('/api/tasks', { method: 'GET', handler: () => serverList })
 
-    // The created task matched the active filter ('all'): no hidden-task notice.
-    expect(wrapper.findAll('[role="status"]')).toHaveLength(0)
+    const taskBoard = wrapper.findComponent(TaskBoard)
+    taskBoard.vm.$emit('move', 'todo-1', 'in_progress', null)
+    await flushPromises()
 
-    // --- mutation failure: status select disabled while pending, banner + rollback after ---
-    const statusSelect = wrapper.find('select[aria-label="Statut de Tâche existante"]')
-    await statusSelect.setValue('done')
-    await nextTick()
-
-    expect((statusSelect.element as HTMLSelectElement).disabled).toBe(true)
-
-    rejectUpdate(createError({ statusCode: 500, statusMessage: 'Internal Server Error' }))
+    rejectMove(createError({ statusCode: 500, statusMessage: 'Task data is corrupted' }))
+    // Two flushes: one for the rejected move, one for the `fetchTasks()` resync it triggers.
+    await flushPromises()
     await flushPromises()
 
     expect(wrapper.findAll('[role="alert"]')).toHaveLength(1)
-    expect(wrapper.find('[role="alert"]').text()).toContain('Impossible de mettre à jour la tâche. Modification annulée.')
-    expect((statusSelect.element as HTMLSelectElement).value).toBe('todo')
-    expect((statusSelect.element as HTMLSelectElement).disabled).toBe(false)
+    expect(wrapper.find('[role="alert"]').text()).toContain('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
 
     await wrapper.find('[role="alert"] button').trigger('click')
     expect(wrapper.findAll('[role="alert"]')).toHaveLength(0)
-
-    // --- a task created while filtered out raises a notice, cleared by "Tout afficher" ---
-    await wrapper.vm.$router.push({ query: { status: 'done' } })
-    await flushPromises()
-
-    await wrapper.find('#task-title').setValue('Tâche masquée par le filtre')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-
-    resolveCreate(makeTask({ id: 'hidden-task', title: 'Tâche masquée par le filtre', status: 'todo' }))
-    await flushPromises()
-    await vi.waitUntil(() => wrapper.findAll('[role="status"]').length === 1)
-
-    expect(wrapper.find('[role="status"]').text()).toContain('Tâche créée, masquée par les filtres actifs.')
-
-    await wrapper.find('[role="status"] button').trigger('click')
-    await vi.waitUntil(() => currentQuery().status === undefined)
-    await flushPromises()
-
-    expect(wrapper.findAll('[role="status"]')).toHaveLength(0)
-    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('true')
-
-    // --- changing filters directly also clears a pending notice ---
-    await wrapper.vm.$router.push({ query: { status: 'done' } })
-    await flushPromises()
-
-    await wrapper.find('#task-title').setValue('Autre tâche masquée')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-
-    resolveCreate(makeTask({ id: 'hidden-task-2', title: 'Autre tâche masquée', status: 'todo' }))
-    await flushPromises()
-    await vi.waitUntil(() => wrapper.findAll('[role="status"]').length === 1)
-
-    await wrapper.vm.$router.push({ query: { status: 'todo' } })
-    await flushPromises()
-
-    expect(wrapper.findAll('[role="status"]')).toHaveLength(0)
   })
 })

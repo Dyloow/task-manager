@@ -38,7 +38,7 @@ describe('useTasksStore', () => {
     const store = useTasksStore()
 
     expect(store.tasks).toEqual([])
-    expect(store.visibleTasks).toEqual([])
+    expect(store.tasksByStatus).toEqual({ todo: [], in_progress: [], done: [] })
     expect(store.filters).toEqual({ status: 'all', priority: 'all' })
     expect(store.error).toBeNull()
   })
@@ -295,23 +295,89 @@ describe('useTasksStore', () => {
     expect(store.error).toBeNull()
   })
 
-  it('filters narrow visibleTasks while countsByStatus covers every task', () => {
-    const todoOld = makeTask({ id: 'task-1', status: 'todo', priority: 'high', createdAt: '2026-01-01T00:00:00.000Z' })
-    const inProgress = makeTask({ id: 'task-2', status: 'in_progress', priority: 'low', createdAt: '2026-01-02T00:00:00.000Z' })
-    const done = makeTask({ id: 'task-3', status: 'done', priority: 'high', createdAt: '2026-01-03T00:00:00.000Z' })
-    const todoNew = makeTask({ id: 'task-4', status: 'todo', priority: 'low', createdAt: '2026-01-04T00:00:00.000Z' })
+  it('tasksByStatus ranks each column by position, applies the priority filter, ignores the status filter', () => {
+    const todoLow = makeTask({ id: 'task-1', status: 'todo', priority: 'low', position: 1 })
+    const todoHigh = makeTask({ id: 'task-2', status: 'todo', priority: 'high', position: 0 })
+    const inProgress = makeTask({ id: 'task-3', status: 'in_progress', priority: 'high', position: 0 })
+    const done = makeTask({ id: 'task-4', status: 'done', priority: 'low', position: 0 })
 
     const store = useTasksStore()
-    store.tasks = [todoOld, inProgress, done, todoNew]
+    store.tasks = [todoLow, todoHigh, inProgress, done]
 
-    expect(store.visibleTasks.map((task) => task.id)).toEqual(['task-4', 'task-3', 'task-2', 'task-1'])
-
-    store.setFilters({ status: 'todo' })
-    expect(store.visibleTasks.map((task) => task.id)).toEqual(['task-4', 'task-1'])
+    expect(store.tasksByStatus.todo.map((task) => task.id)).toEqual(['task-2', 'task-1'])
+    expect(store.tasksByStatus.in_progress.map((task) => task.id)).toEqual(['task-3'])
+    expect(store.tasksByStatus.done.map((task) => task.id)).toEqual(['task-4'])
+    expect(store.countsByStatus).toEqual({ todo: 2, in_progress: 1, done: 1 })
 
     store.setFilters({ priority: 'high' })
-    expect(store.visibleTasks.map((task) => task.id)).toEqual(['task-1'])
+    expect(store.tasksByStatus.todo.map((task) => task.id)).toEqual(['task-2'])
+    expect(store.tasksByStatus.done).toEqual([])
 
-    expect(store.countsByStatus).toEqual({ todo: 2, in_progress: 1, done: 1 })
+    // The status filter selects which column the board shows; it never
+    // removes a task from the column it belongs to.
+    store.setFilters({ priority: 'all', status: 'todo' })
+    expect(store.tasksByStatus.todo.map((task) => task.id)).toEqual(['task-2', 'task-1'])
+    expect(store.tasksByStatus.in_progress.map((task) => task.id)).toEqual(['task-3'])
+  })
+
+  it('moveTask within a column reorders it optimistically and posts { status, beforeId }', async () => {
+    const first = makeTask({ id: 'task-1', status: 'todo', position: 0 })
+    const second = makeTask({ id: 'task-2', status: 'todo', position: 1 })
+    let receivedBody: unknown
+    mockEndpoint('/api/tasks/task-2/move', {
+      method: 'POST',
+      handler: async (event) => {
+        receivedBody = await readBody(event)
+        return { ...second, position: 0 }
+      }
+    })
+
+    const store = useTasksStore()
+    store.tasks = [first, second]
+
+    await store.moveTask('task-2', 'todo', 'task-1')
+
+    expect(store.tasksByStatus.todo.map((task) => task.id)).toEqual(['task-2', 'task-1'])
+    expect(receivedBody).toEqual({ status: 'todo', beforeId: 'task-1' })
+    expect(store.error).toBeNull()
+  })
+
+  it('moveTask across columns moves the task to the target column, at the end when beforeId is null', async () => {
+    const todo = makeTask({ id: 'task-1', status: 'todo', position: 0 })
+    const inProgress = makeTask({ id: 'task-2', status: 'in_progress', position: 0 })
+    mockEndpoint('/api/tasks/task-1/move', {
+      method: 'POST',
+      handler: () => ({ ...todo, status: 'in_progress', position: 1 })
+    })
+
+    const store = useTasksStore()
+    store.tasks = [todo, inProgress]
+
+    await store.moveTask('task-1', 'in_progress', null)
+
+    expect(store.tasksByStatus.todo).toEqual([])
+    expect(store.tasksByStatus.in_progress.map((task) => task.id)).toEqual(['task-2', 'task-1'])
+  })
+
+  it('moveTask on failure resyncs the board from the server and shows the French banner', async () => {
+    const todo = makeTask({ id: 'task-1', status: 'todo', position: 0 })
+    const inProgress = makeTask({ id: 'task-2', status: 'in_progress', position: 0 })
+    mockEndpoint('/api/tasks/task-1/move', {
+      method: 'POST',
+      handler: () => {
+        throw createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
+      }
+    })
+    const serverList = [todo, inProgress]
+    mockEndpoint('/api/tasks', { method: 'GET', handler: () => serverList })
+
+    const store = useTasksStore()
+    store.tasks = [todo, inProgress]
+
+    await store.moveTask('task-1', 'in_progress', null)
+
+    expect(store.tasks).toEqual(serverList)
+    expect(store.error?.message).toBe('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
+    expect(store.isPending('task-1')).toBe(false)
   })
 })
