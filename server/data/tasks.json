@@ -1,8 +1,8 @@
 [
   {
     "id": "9c3f1b2a-1e2d-4b3a-8f0a-111111111111",
-    "title": "Set up project repository",
-    "description": "Initialize the Nuxt app and push the first commit.",
+    "title": "Initialiser le dépôt du projet",
+    "description": "Initialiser l'application Nuxt et pousser le premier commit.",
     "status": "done",
     "priority": "medium",
     "createdAt": "2026-10-20T09:00:00.000Z",
@@ -10,8 +10,8 @@
   },
   {
     "id": "9c3f1b2a-1e2d-4b3a-8f0a-222222222222",
-    "title": "Design task card component",
-    "description": "Sketch the layout for status and priority badges.",
+    "title": "Concevoir le composant de carte de tâche",
+    "description": "Esquisser la mise en page des badges de statut et de priorité.",
     "status": "in_progress",
     "priority": "high",
     "createdAt": "2026-10-21T10:00:00.000Z",
@@ -19,7 +19,7 @@
   },
   {
     "id": "9c3f1b2a-1e2d-4b3a-8f0a-333333333333",
-    "title": "Write API documentation",
+    "title": "Rédiger la documentation de l'API",
     "description": "",
     "status": "todo",
     "priority": "low",
@@ -28,8 +28,8 @@
   },
   {
     "id": "9c3f1b2a-1e2d-4b3a-8f0a-444444444444",
-    "title": "Fix filter query sync",
-    "description": "Filters should be reflected in the URL query string.",
+    "title": "Corriger la synchronisation des filtres avec l'URL",
+    "description": "Les filtres doivent être reflétés dans les paramètres de l'URL.",
     "status": "todo",
     "priority": "high",
     "createdAt": "2026-10-24T11:45:00.000Z",
@@ -37,8 +37,8 @@
   },
   {
     "id": "9c3f1b2a-1e2d-4b3a-8f0a-555555555555",
-    "title": "Review accessibility pass",
-    "description": "Check focus rings and contrast on every interactive element.",
+    "title": "Revue de l'accessibilité",
+    "description": "Vérifier les anneaux de focus et le contraste sur chaque élément interactif.",
     "status": "in_progress",
     "priority": "medium",
     "createdAt": "2026-10-25T13:30:00.000Z",

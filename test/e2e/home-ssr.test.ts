@@ -14,13 +14,13 @@ await setup({
 
 // Seeded from server/data/tasks.json, newest createdAt first.
 const ALL_SEEDED_TITLES_NEWEST_FIRST = [
-  'Review accessibility pass',
-  'Fix filter query sync',
-  'Write API documentation',
-  'Design task card component',
-  'Set up project repository'
+  "Revue de l'accessibilité",
+  "Corriger la synchronisation des filtres avec l'URL",
+  "Rédiger la documentation de l'API",
+  'Concevoir le composant de carte de tâche',
+  'Initialiser le dépôt du projet'
 ]
-const DONE_TASK_TITLE = 'Set up project repository'
+const DONE_TASK_TITLE = 'Initialiser le dépôt du projet'
 
 /** Titles rendered in the task list, not the ones only present in the hydration payload. */
 function renderedTaskTitles(html: string): string[] {
