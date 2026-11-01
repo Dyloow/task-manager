@@ -380,4 +380,74 @@ describe('useTasksStore', () => {
     expect(store.error?.message).toBe('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
     expect(store.isPending('task-1')).toBe(false)
   })
+
+  it('updateTask waits for the server, then applies the returned task (pessimistic)', async () => {
+    const original = makeTask({ id: 'task-1', title: 'Before' })
+    const updated = { ...original, title: 'After', updatedAt: '2026-01-02T00:00:00.000Z' }
+    let receivedBody: unknown
+    mockEndpoint('/api/tasks/task-1', {
+      method: 'PATCH',
+      handler: async (event) => {
+        receivedBody = await readBody(event)
+        return updated
+      }
+    })
+
+    const store = useTasksStore()
+    store.tasks = [original]
+
+    const pending = store.updateTask('task-1', { title: 'After' })
+    // Pessimistic: nothing changes until the server answers.
+    expect(store.tasks[0]).toEqual(original)
+    expect(store.isPending('task-1')).toBe(true)
+
+    const result = await pending
+
+    expect(result).toEqual(updated)
+    expect(store.tasks[0]).toEqual(updated)
+    expect(receivedBody).toEqual({ title: 'After' })
+    expect(store.isPending('task-1')).toBe(false)
+  })
+
+  it('updateTask on a 400 leaves the board unchanged and rejects with field errors, no banner message overwritten by the caller', async () => {
+    const original = makeTask({ id: 'task-1' })
+    mockEndpoint('/api/tasks/task-1', {
+      method: 'PATCH',
+      handler: () => {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Invalid request body',
+          data: { issues: { formErrors: [], fieldErrors: { title: ['Title is required'] } } }
+        })
+      }
+    })
+
+    const store = useTasksStore()
+    store.tasks = [original]
+
+    await expect(store.updateTask('task-1', { title: '' })).rejects.toMatchObject({
+      statusCode: 400,
+      fieldErrors: { title: ['Title is required'] }
+    })
+    expect(store.tasks).toEqual([original])
+  })
+
+  it('updateTask on a 500 leaves the board unchanged and shows the French banner', async () => {
+    const original = makeTask({ id: 'task-1' })
+    mockEndpoint('/api/tasks/task-1', {
+      method: 'PATCH',
+      handler: () => {
+        throw createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
+      }
+    })
+
+    const store = useTasksStore()
+    store.tasks = [original]
+
+    await expect(store.updateTask('task-1', { title: 'New' })).rejects.toMatchObject({ statusCode: 500 })
+
+    expect(store.tasks).toEqual([original])
+    expect(store.error?.message).toBe("Impossible d'enregistrer les modifications.")
+    expect(store.isPending('task-1')).toBe(false)
+  })
 })

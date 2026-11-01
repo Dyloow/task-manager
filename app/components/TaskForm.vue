@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { z } from 'zod'
 import { createTaskSchema, taskPrioritySchema, taskStatusSchema } from '#shared/schemas/task'
-import type { CreateTaskInput, TaskPriority, TaskStatus } from '#shared/types/task'
+import type { CreateTaskInput, Task, TaskPriority, TaskStatus, UpdateTaskInput } from '#shared/types/task'
 import { PRIORITY_LABELS, STATUS_LABELS } from '~/utils/task-labels'
 
 const props = defineProps<{
@@ -11,7 +11,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [input: CreateTaskInput]
+  create: [input: CreateTaskInput]
+  save: [patch: UpdateTaskInput]
 }>()
 
 const priorityOptions = taskPrioritySchema.options
@@ -21,6 +22,15 @@ const title = ref('')
 const description = ref('')
 const status = ref<TaskStatus>('todo')
 const priority = ref<TaskPriority>('medium')
+
+// 'create': submit emits the full input. 'edit': submit diffs against
+// `originalTask` and emits only the fields that changed, so the server
+// receives a minimal patch. Set by the parent modal through `resetForCreate`/
+// `loadForEdit`, not by a prop: the form is one persistent instance reused
+// across every open, imperatively repopulated each time (native `<dialog>`
+// stays mounted; only `showModal()`/`close()` toggle its visibility).
+const mode = ref<'create' | 'edit'>('create')
+const originalTask = ref<Task | null>(null)
 
 // Client errors take over the display the moment they exist: they mean the
 // server errors we may still be holding from a previous attempt are stale.
@@ -35,23 +45,43 @@ const formErrors = computed(() => (clientFormErrors.value.length ? clientFormErr
 const titleError = computed(() => fieldErrors.value.title?.[0])
 const descriptionError = computed(() => fieldErrors.value.description?.[0])
 
+const submitLabel = computed(() => {
+  if (mode.value === 'create') return props.pending ? 'Ajout…' : 'Ajouter la tâche'
+  return props.pending ? 'Enregistrement…' : 'Enregistrer'
+})
+
 // Placeholder stays `ink-soft` (not `ink-faint`, which fails 4.5:1 on white)
 // and adds `italic` so it reads as an example, not as text the user typed.
 const fieldClass =
   'rounded-control border border-border-control bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-soft placeholder:italic focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-faint'
 
-function reset() {
-  title.value = ''
-  description.value = ''
-  status.value = 'todo'
-  priority.value = 'medium'
+function clearErrors() {
   clientFieldErrors.value = {}
   clientFormErrors.value = []
 }
 
+function resetForCreate(defaultStatus: TaskStatus = 'todo') {
+  mode.value = 'create'
+  originalTask.value = null
+  title.value = ''
+  description.value = ''
+  status.value = defaultStatus
+  priority.value = 'medium'
+  clearErrors()
+}
+
+function loadForEdit(task: Task) {
+  mode.value = 'edit'
+  originalTask.value = task
+  title.value = task.title
+  description.value = task.description
+  status.value = task.status
+  priority.value = task.priority
+  clearErrors()
+}
+
 function handleSubmit() {
-  clientFieldErrors.value = {}
-  clientFormErrors.value = []
+  clearErrors()
 
   const result = createTaskSchema.safeParse({
     title: title.value,
@@ -67,16 +97,26 @@ function handleSubmit() {
     return
   }
 
-  emit('submit', result.data)
+  if (mode.value === 'create') {
+    emit('create', result.data)
+    return
+  }
+
+  const original = originalTask.value
+  const patch: UpdateTaskInput = {}
+  if (!original || result.data.title !== original.title) patch.title = result.data.title
+  if (!original || result.data.description !== original.description) patch.description = result.data.description
+  if (!original || result.data.status !== original.status) patch.status = result.data.status
+  if (!original || result.data.priority !== original.priority) patch.priority = result.data.priority
+
+  emit('save', patch)
 }
 
-defineExpose({ reset })
+defineExpose({ resetForCreate, loadForEdit })
 </script>
 
 <template>
   <form class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
-    <h2 class="text-sm font-semibold tracking-tight text-ink">Nouvelle tâche</h2>
-
     <p v-for="message in formErrors" :key="message" role="alert" class="text-sm text-danger">
       {{ message }}
     </p>
@@ -133,7 +173,7 @@ defineExpose({ reset })
       :disabled="pending"
       class="w-full rounded-control bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-ink-faint"
     >
-      {{ pending ? 'Ajout…' : 'Ajouter la tâche' }}
+      {{ submitLabel }}
     </button>
   </form>
 </template>

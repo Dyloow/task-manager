@@ -1,30 +1,113 @@
 <script setup lang="ts">
-import type { TaskStatus } from '#shared/types/task'
+import type { CreateTaskInput, Task, TaskStatus, UpdateTaskInput } from '#shared/types/task'
+import { ApiError, type ApiErrorState } from '~/utils/api-error'
 import { ACTION_ERROR_MESSAGES } from '~/stores/tasks'
 
 const store = useTasksStore()
-const { status: statusFilter, priority: priorityFilter, setStatus, setPriority } = useTaskFilters()
+const { status: statusFilter, priority: priorityFilter, setStatus, setPriority, resetFilters } = useTaskFilters()
 
 const { pending, error, refresh } = await useAsyncData('tasks', () => store.fetchTasks())
+
+const modalRef = ref<{
+  openCreate: (status?: TaskStatus) => void
+  openEdit: (task: Task) => void
+  close: () => void
+} | null>(null)
+const isSubmitting = ref(false)
+const modalError = ref<ApiErrorState | null>(null)
+const isCreatedTaskHidden = ref(false)
 
 const filterCounts = computed(() => ({
   all: store.tasks.length,
   ...store.countsByStatus
 }))
 
+// The notice is only valid for the filters it was raised under: any change
+// (including the notice's own "Tout afficher" action) clears it.
+watch([statusFilter, priorityFilter], () => {
+  isCreatedTaskHidden.value = false
+})
+
 function handleMove(id: string, status: TaskStatus, beforeId: string | null) {
   store.moveTask(id, status, beforeId)
+}
+
+function handleOpenCreate(status: TaskStatus = 'todo') {
+  modalError.value = null
+  modalRef.value?.openCreate(status)
+}
+
+function handleOpenTask(id: string) {
+  const task = store.tasks.find((task) => task.id === id)
+  if (!task) return
+  modalError.value = null
+  modalRef.value?.openEdit(task)
+}
+
+function handleModalClosed() {
+  modalError.value = null
+}
+
+async function handleCreate(input: CreateTaskInput) {
+  modalError.value = null
+  isSubmitting.value = true
+  try {
+    const task = await store.createTask(input)
+    const matchesStatus = statusFilter.value === 'all' || task.status === statusFilter.value
+    const matchesPriority = priorityFilter.value === 'all' || task.priority === priorityFilter.value
+    isCreatedTaskHidden.value = !(matchesStatus && matchesPriority)
+    modalRef.value?.close()
+  } catch (cause) {
+    // A 400 is a validation issue the form already reports inline: showing
+    // it again in the banner would duplicate the same message.
+    if (cause instanceof ApiError && cause.statusCode === 400) {
+      modalError.value = cause.toState()
+      store.clearError()
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+async function handleSave(id: string, patch: UpdateTaskInput) {
+  modalError.value = null
+  isSubmitting.value = true
+  try {
+    await store.updateTask(id, patch)
+    modalRef.value?.close()
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.statusCode === 400) {
+      modalError.value = cause.toState()
+      store.clearError()
+    }
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function handleDelete(id: string) {
+  modalRef.value?.close()
+  store.removeTask(id)
 }
 </script>
 
 <template>
   <main class="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
-    <header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-4">
+    <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border pb-4">
       <h1 class="text-xl font-semibold tracking-tight text-ink">Tâches</h1>
-      <p class="font-mono text-sm text-ink-soft">
-        {{ filterCounts.all }} tâche{{ filterCounts.all > 1 ? 's' : '' }} · {{ filterCounts.done }}
-        {{ filterCounts.done > 1 ? 'terminées' : 'terminée' }}
-      </p>
+      <div class="flex items-center gap-4">
+        <p class="font-mono text-sm text-ink-soft">
+          {{ filterCounts.all }} tâche{{ filterCounts.all > 1 ? 's' : '' }} · {{ filterCounts.done }}
+          {{ filterCounts.done > 1 ? 'terminées' : 'terminée' }}
+        </p>
+        <button
+          type="button"
+          class="shrink-0 rounded-control bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          @click="handleOpenCreate()"
+        >
+          + Nouvelle tâche
+        </button>
+      </div>
     </header>
 
     <!-- Mutation errors only: a load failure already has its own retry block below, so this never doubles up. -->
@@ -37,6 +120,8 @@ function handleMove(id: string, status: TaskStatus, beforeId: string | null) {
       @update:status="setStatus"
       @update:priority="setPriority"
     />
+
+    <TaskHiddenNotice v-if="isCreatedTaskHidden" @show-all="resetFilters" />
 
     <div
       v-if="error"
@@ -66,6 +151,19 @@ function handleMove(id: string, status: TaskStatus, beforeId: string | null) {
       :status-filter="statusFilter"
       :pending-ids="store.pendingIds"
       @move="handleMove"
+      @create-in-column="handleOpenCreate"
+      @open="handleOpenTask"
+    />
+
+    <TaskModal
+      ref="modalRef"
+      :pending="isSubmitting"
+      :server-field-errors="modalError?.fieldErrors"
+      :server-form-errors="modalError?.formErrors"
+      @create="handleCreate"
+      @save="handleSave"
+      @delete="handleDelete"
+      @closed="handleModalClosed"
     />
   </main>
 </template>

@@ -68,7 +68,7 @@ defineExpose({ handleUpdate, handleAdd })
       :group="DRAG_GROUP"
       :animation="150"
       ghost-class="opacity-40"
-      chosen-class="ring-2 ring-accent"
+      chosen-class="shadow-[0_0_0_2px_var(--color-accent)]"
       class="flex min-h-24 flex-col gap-2 rounded-card border border-dashed border-border p-2"
       @update="handleUpdate"
       @add="handleAdd"

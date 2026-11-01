@@ -21,7 +21,8 @@ export const ACTION_ERROR_MESSAGES = {
   create: 'Impossible de créer la tâche.',
   update: 'Impossible de mettre à jour la tâche. Modification annulée.',
   delete: 'Impossible de supprimer la tâche. Elle a été restaurée.',
-  move: 'Impossible de déplacer la tâche. Le tableau a été resynchronisé.'
+  move: 'Impossible de déplacer la tâche. Le tableau a été resynchronisé.',
+  save: "Impossible d'enregistrer les modifications."
 } as const
 
 function toActionErrorState(apiError: ApiError, action: keyof typeof ACTION_ERROR_MESSAGES): ApiErrorState {
@@ -174,6 +175,28 @@ export const useTasksStore = defineStore('tasks', () => {
     }
   }
 
+  /**
+   * Pessimistic: waits for the server so a 400 can report field errors back
+   * to the modal before anything on the board changes. A status change in
+   * `patch` keeps the server's column rules (append to the target column's
+   * end), applied through the returned task, not computed here.
+   */
+  async function updateTask(id: string, patch: UpdateTaskInput) {
+    markPending(id)
+    try {
+      const updated = await $fetch<Task>(`/api/tasks/${id}`, { method: 'PATCH', body: patch })
+      const index = tasks.value.findIndex((task) => task.id === id)
+      if (index !== -1) tasks.value[index] = updated
+      return updated
+    } catch (cause) {
+      const apiError = toApiError(cause)
+      error.value = toActionErrorState(apiError, 'save')
+      throw apiError
+    } finally {
+      clearPending(id)
+    }
+  }
+
   async function removeTask(id: string) {
     const index = tasks.value.findIndex((task) => task.id === id)
     if (index === -1) return
@@ -248,6 +271,7 @@ export const useTasksStore = defineStore('tasks', () => {
     fetchTasks,
     createTask,
     updateStatus,
+    updateTask,
     removeTask,
     moveTask,
     setFilters,
