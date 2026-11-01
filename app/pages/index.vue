@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { CreateTaskInput, TaskStatus } from '#shared/types/task'
 import { ApiError, type ApiErrorState } from '~/utils/api-error'
-
-const LOAD_ERROR_MESSAGE = 'Impossible de charger les tâches.'
+import { ACTION_ERROR_MESSAGES } from '~/stores/tasks'
 
 const store = useTasksStore()
 const { status: statusFilter, priority: priorityFilter, setStatus, setPriority } = useTaskFilters()
@@ -102,7 +101,7 @@ function resetFilters() {
           role="alert"
           class="flex flex-col items-start gap-2 rounded-card border border-danger/25 bg-danger-soft p-4 text-sm text-danger-strong"
         >
-          <p>{{ LOAD_ERROR_MESSAGE }}</p>
+          <p>{{ ACTION_ERROR_MESSAGES.load }}</p>
           <button
             type="button"
             class="rounded-control border border-danger/40 px-3 py-1.5 font-medium hover:bg-danger-soft/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-danger"

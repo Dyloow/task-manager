@@ -48,11 +48,8 @@ function isFetchError(error: unknown): error is FetchError<ErrorResponseBody> {
   return error instanceof Error && 'statusCode' in error
 }
 
-// Our own fallback wording when there is nothing more specific to show. A
-// server `statusMessage` (English, set by the API) still wins when present:
-// this utility normalizes shape, not translation of arbitrary server text —
-// callers that display a message to the user (the store, in French) replace
-// it with their own copy instead of relying on this fallback.
+// Fallback wording for the error's own `message` (logs, thrown errors). What
+// the user reads is owned by the store, which replaces it per action.
 const FALLBACK_MESSAGES: Record<number, string> = {
   404: 'Tâche introuvable.',
   500: 'Une erreur est survenue côté serveur. Réessayez.'

@@ -13,7 +13,7 @@ export interface TaskFilters {
 // tried to do and what happened to their change, not the server's own
 // (English, HTTP-flavoured) message. `statusCode`/`fieldErrors`/`formErrors`
 // are still kept, for the create form and for callers that need them.
-const ACTION_ERROR_MESSAGES = {
+export const ACTION_ERROR_MESSAGES = {
   load: 'Impossible de charger les tâches.',
   create: 'Impossible de créer la tâche.',
   update: 'Impossible de mettre à jour la tâche. Modification annulée.',
