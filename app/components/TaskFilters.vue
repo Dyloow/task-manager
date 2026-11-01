@@ -27,24 +27,25 @@ const priorityOptions: PriorityFilter[] = ['all', ...taskPrioritySchema.options]
         type="button"
         role="tab"
         :aria-selected="status === option"
-        class="shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+        class="flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         :class="
           status === option
-            ? 'border-slate-900 bg-slate-900 text-white'
-            : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+            ? 'border-accent bg-accent text-white'
+            : 'border-border bg-surface text-ink-soft hover:border-border-strong hover:text-ink'
         "
         @click="emit('update:status', option)"
       >
-        {{ STATUS_FILTER_LABELS[option] }} ({{ counts[option] }})
+        {{ STATUS_FILTER_LABELS[option] }}
+        <span class="font-mono text-xs" :class="status === option ? 'text-white/80' : 'text-ink-soft'">{{ counts[option] }}</span>
       </button>
     </div>
 
-    <div class="flex flex-col gap-1 sm:w-56">
-      <label for="priority-filter" class="text-sm font-medium">Priorité</label>
+    <div class="flex flex-col gap-1.5 sm:w-56">
+      <label for="priority-filter" class="text-xs font-medium text-ink-soft">Priorité</label>
       <select
         id="priority-filter"
         :value="priority"
-        class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+        class="rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         @change="emit('update:priority', ($event.target as HTMLSelectElement).value as PriorityFilter)"
       >
         <option v-for="option in priorityOptions" :key="option" :value="option">{{ PRIORITY_FILTER_LABELS[option] }}</option>

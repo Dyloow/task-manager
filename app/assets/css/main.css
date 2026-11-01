@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+/**
+ * Visual direction: a precision instrument, not a generic SaaS template.
+ * Flat surfaces (hairline borders, no card shadows), one deliberate accent
+ * (a deep ink-teal reserved for primary actions and the active filter), and
+ * a technical sans/mono pairing (IBM Plex) where mono is reserved for
+ * counts and numeric data, never decoration. See aidd_docs/memory/design.md.
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --color-canvas: #f6f6f4;
+  --color-surface: #ffffff;
+  --color-border: #e1e3df;
+  --color-border-strong: #c7cac4;
+
+  --color-ink: #15181c;
+  --color-ink-soft: #565d63;
+  --color-ink-faint: #878d8f;
+
+  --color-accent: #1f5d4f;
+  --color-accent-strong: #143f35;
+  --color-accent-soft: #e4eeea;
+
+  --color-danger: #9a2b1e;
+  --color-danger-strong: #7a2117;
+  --color-danger-soft: #f8e9e6;
+
+  --color-amber: #8a5a12;
+  --color-amber-soft: #f4ead6;
+
+  --radius-control: 0.5rem;
+  --radius-card: 0.875rem;
+}

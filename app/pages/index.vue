@@ -52,10 +52,10 @@ function resetFilters() {
 </script>
 
 <template>
-  <main class="mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6">
-    <header class="flex flex-wrap items-baseline justify-between gap-2">
-      <h1 class="text-2xl font-semibold text-slate-900">Tâches</h1>
-      <p class="text-sm text-slate-600">
+  <main class="mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+    <header class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-4">
+      <h1 class="text-xl font-semibold tracking-tight text-ink">Tâches</h1>
+      <p class="font-mono text-sm text-ink-soft">
         {{ filterCounts.all }} tâche{{ filterCounts.all > 1 ? 's' : '' }} · {{ filterCounts.done }}
         {{ STATUS_LABELS.done.toLowerCase() }}{{ filterCounts.done > 1 ? 's' : '' }}
       </p>
@@ -65,7 +65,8 @@ function resetFilters() {
 
     <button
       type="button"
-      class="rounded-md border border-slate-300 px-4 py-2 text-left text-sm font-medium text-slate-700 lg:hidden"
+      class="flex items-center justify-between rounded-control border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent lg:hidden"
+      :aria-expanded="isFormOpen"
       @click="isFormOpen = !isFormOpen"
     >
       {{ isFormOpen ? 'Fermer le formulaire' : '+ Nouvelle tâche' }}
@@ -74,7 +75,7 @@ function resetFilters() {
     <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
       <section
         :class="isFormOpen ? 'block' : 'hidden'"
-        class="rounded-lg border border-slate-200 bg-white p-4 lg:sticky lg:top-6 lg:block lg:w-72 lg:shrink-0"
+        class="rounded-card border border-border bg-surface p-4 lg:sticky lg:top-8 lg:block lg:w-72 lg:shrink-0"
       >
         <TaskForm
           ref="taskFormRef"
@@ -94,11 +95,15 @@ function resetFilters() {
           @update:priority="setPriority"
         />
 
-        <div v-if="error" role="alert" class="flex flex-col items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div
+          v-if="error"
+          role="alert"
+          class="flex flex-col items-start gap-2 rounded-card border border-danger/25 bg-danger-soft p-4 text-sm text-danger-strong"
+        >
           <p>{{ error.message }}</p>
           <button
             type="button"
-            class="rounded-md border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+            class="rounded-control border border-danger/40 px-3 py-1.5 font-medium hover:bg-danger-soft/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-danger"
             @click="refresh()"
           >
             Réessayer

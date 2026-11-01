@@ -35,6 +35,9 @@ const formErrors = computed(() => (clientFormErrors.value.length ? clientFormErr
 const titleError = computed(() => fieldErrors.value.title?.[0])
 const descriptionError = computed(() => fieldErrors.value.description?.[0])
 
+const fieldClass =
+  'rounded-control border border-border bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-faint'
+
 function reset() {
   title.value = ''
   description.value = ''
@@ -70,61 +73,54 @@ defineExpose({ reset })
 
 <template>
   <form class="flex flex-col gap-4" novalidate @submit.prevent="handleSubmit">
-    <h2 class="text-base font-semibold">Nouvelle tâche</h2>
+    <h2 class="text-sm font-semibold tracking-tight text-ink">Nouvelle tâche</h2>
 
-    <p v-for="message in formErrors" :key="message" role="alert" class="text-sm text-red-700">
+    <p v-for="message in formErrors" :key="message" role="alert" class="text-sm text-danger">
       {{ message }}
     </p>
 
-    <div class="flex flex-col gap-1">
-      <label for="task-title" class="text-sm font-medium">Titre</label>
+    <div class="flex flex-col gap-1.5">
+      <label for="task-title" class="text-xs font-medium text-ink-soft">Titre</label>
       <input
         id="task-title"
         v-model="title"
         type="text"
+        placeholder="Préparer la démo"
         :disabled="pending"
         :aria-invalid="!!titleError"
         :aria-describedby="titleError ? 'task-title-error' : undefined"
-        class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:opacity-60"
+        :class="fieldClass"
       >
-      <p v-if="titleError" id="task-title-error" class="text-sm text-red-700">{{ titleError }}</p>
+      <p v-if="titleError" id="task-title-error" class="text-sm text-danger">{{ titleError }}</p>
     </div>
 
-    <div class="flex flex-col gap-1">
-      <label for="task-description" class="text-sm font-medium">Description</label>
+    <div class="flex flex-col gap-1.5">
+      <label for="task-description" class="text-xs font-medium text-ink-soft">Description</label>
       <textarea
         id="task-description"
         v-model="description"
         rows="3"
+        placeholder="Détails utiles pour la réaliser"
         :disabled="pending"
         :aria-invalid="!!descriptionError"
         :aria-describedby="descriptionError ? 'task-description-error' : undefined"
-        class="resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:opacity-60"
+        class="resize-none"
+        :class="fieldClass"
       />
-      <p v-if="descriptionError" id="task-description-error" class="text-sm text-red-700">{{ descriptionError }}</p>
+      <p v-if="descriptionError" id="task-description-error" class="text-sm text-danger">{{ descriptionError }}</p>
     </div>
 
     <div class="flex gap-3">
-      <div class="flex flex-1 flex-col gap-1">
-        <label for="task-priority" class="text-sm font-medium">Priorité</label>
-        <select
-          id="task-priority"
-          v-model="priority"
-          :disabled="pending"
-          class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:opacity-60"
-        >
+      <div class="flex flex-1 flex-col gap-1.5">
+        <label for="task-priority" class="text-xs font-medium text-ink-soft">Priorité</label>
+        <select id="task-priority" v-model="priority" :disabled="pending" :class="fieldClass">
           <option v-for="option in priorityOptions" :key="option" :value="option">{{ PRIORITY_LABELS[option] }}</option>
         </select>
       </div>
 
-      <div class="flex flex-1 flex-col gap-1">
-        <label for="task-status" class="text-sm font-medium">Statut</label>
-        <select
-          id="task-status"
-          v-model="status"
-          :disabled="pending"
-          class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:opacity-60"
-        >
+      <div class="flex flex-1 flex-col gap-1.5">
+        <label for="task-status" class="text-xs font-medium text-ink-soft">Statut</label>
+        <select id="task-status" v-model="status" :disabled="pending" :class="fieldClass">
           <option v-for="option in statusOptions" :key="option" :value="option">{{ STATUS_LABELS[option] }}</option>
         </select>
       </div>
@@ -133,7 +129,7 @@ defineExpose({ reset })
     <button
       type="submit"
       :disabled="pending"
-      class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+      class="w-full rounded-control bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-ink-faint"
     >
       {{ pending ? 'Ajout…' : 'Ajouter la tâche' }}
     </button>

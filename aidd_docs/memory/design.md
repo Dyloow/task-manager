@@ -5,14 +5,23 @@
 - Tailwind utility classes only, no other CSS framework nor component library.
 - Visual direction is decided with the `impeccable` and `frontend-design` skills before building UI.
 
+## Direction
+
+- Operate mode: a precision instrument, not a generic SaaS template. Flat surfaces (hairline `border-border`, no card shadows), one deliberate accent (`--color-accent`, a deep ink-teal) reserved for primary actions and the active filter, semantic `danger`/`amber` tokens for priority/error signaling.
+- Type pairing: IBM Plex Sans for all UI text, IBM Plex Mono reserved for counts and numeric data (task counts, filter tab counts) — never decoration. Loaded via a Google Fonts `<link>` in `app/app.vue`; `font-sans`/`font-mono` utilities come from the `--font-*` tokens.
+- `html lang="fr"`, page title "Tâches", set in `app/app.vue`.
+
 ## Tokens
 
-- Theme tokens (colors, fonts) declared with `@theme` in `app/assets/css/main.css`.
+- Theme tokens (colors, fonts, radii) declared with `@theme` in `app/assets/css/main.css`: `--color-canvas/surface/border(-strong)`, `--color-ink/-soft/-faint`, `--color-accent(-strong/-soft)`, `--color-danger(-strong/-soft)`, `--color-amber(-soft)`, `--font-sans`, `--font-mono`, `--radius-control`, `--radius-card`.
+- `ink-faint` is for decorative or genuinely disabled use only (WCAG exempts disabled controls); any readable, non-disabled secondary text uses `ink-soft`, which holds ~6.7:1 contrast on white.
 
 ## Components
 
 - Small presentational components (task card, badges, filters, form) driven by props and emits; only pages and containers talk to the store.
 - Every async surface has loading, empty and error states.
+- Status tabs (`TaskFilters`) are a `role="tablist"`/`role="tab"` segmented control, scrollable on mobile; priority uses a native `<select>`. Priority on a card is a small dot + text label (`TaskCard`), never color alone.
+- Delete asks for a second click on the same button (label flips to "Confirmer ?"), auto-cancelled after 4s or on blur — no modal.
 
 ## Accessibility
 

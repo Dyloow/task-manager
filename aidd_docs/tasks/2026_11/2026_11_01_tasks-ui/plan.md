@@ -1,6 +1,6 @@
 ---
 objective: "A user can view, create, change the status of, delete and filter tasks in a clean, responsive, accessible French interface built with Tailwind only."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Tasks user interface

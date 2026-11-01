@@ -18,21 +18,21 @@ const emit = defineEmits<{
 <template>
   <div>
     <ul v-if="loading" class="flex flex-col gap-3" aria-hidden="true">
-      <li v-for="n in 3" :key="n" class="h-24 animate-pulse rounded-lg border border-slate-200 bg-slate-100" />
+      <li v-for="n in 3" :key="n" class="h-24 animate-pulse rounded-card border border-border bg-border/40" />
     </ul>
 
-    <p v-else-if="!hasAnyTask" class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">
+    <p v-else-if="!hasAnyTask" class="rounded-card border border-dashed border-border-strong p-6 text-center text-sm text-ink-soft">
       Aucune tâche pour le moment. Créez la première avec le formulaire.
     </p>
 
     <div
       v-else-if="tasks.length === 0"
-      class="flex flex-col items-center gap-3 rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600"
+      class="flex flex-col items-center gap-3 rounded-card border border-dashed border-border-strong p-6 text-center text-sm text-ink-soft"
     >
       <p>Aucune tâche ne correspond aux filtres actuels.</p>
       <button
         type="button"
-        class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+        class="rounded-control border border-border px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-border-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         @click="emit('reset-filters')"
       >
         Réinitialiser les filtres
