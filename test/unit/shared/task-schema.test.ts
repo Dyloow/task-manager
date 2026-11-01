@@ -72,6 +72,16 @@ describe('createTaskSchema', () => {
 
     expect(result.success).toBe(false)
   })
+
+  it('rejects forged server-owned fields like id and createdAt', () => {
+    const result = createTaskSchema.safeParse({
+      title: 'Write report',
+      id: 'forged-id',
+      createdAt: '2020-01-01T00:00:00.000Z'
+    })
+
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('updateTaskSchema', () => {

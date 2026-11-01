@@ -17,7 +17,7 @@ export const taskSchema = z.object({
 const titleSchema = z.string().trim().min(1).max(120)
 const descriptionSchema = z.string().trim().max(1000)
 
-export const createTaskSchema = z.object({
+export const createTaskSchema = z.strictObject({
   title: titleSchema,
   description: descriptionSchema.default(''),
   status: taskStatusSchema.default('todo'),

@@ -9,7 +9,7 @@ export async function parseBody<T>(event: H3Event, schema: ZodType<T>): Promise<
     throw createError({
       statusCode: 400,
       statusMessage: 'Invalid request body',
-      data: { issues: z.flattenError(parsed.error).fieldErrors }
+      data: { issues: z.flattenError(parsed.error) }
     })
   }
 

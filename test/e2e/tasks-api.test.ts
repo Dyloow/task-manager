@@ -13,12 +13,28 @@ await setup({
   }
 })
 
-function api(path: string, options: RequestInit = {}) {
+interface ApiRequestInit {
+  method?: string
+  body?: unknown
+  headers?: Record<string, string>
+}
+
+function api(path: string, options: ApiRequestInit = {}): Promise<Response> {
+  const { method, body, headers } = options
   return fetch(path, {
-    ...options,
-    headers: { 'content-type': 'application/json', ...options.headers },
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined
-  } as RequestInit)
+    method,
+    headers: { 'content-type': 'application/json', ...headers },
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  })
+}
+
+interface ValidationErrorBody {
+  data?: {
+    issues?: {
+      formErrors?: string[]
+      fieldErrors?: Record<string, string[]>
+    }
+  }
 }
 
 describe('tasks API', () => {
@@ -34,7 +50,7 @@ describe('tasks API', () => {
   it('POST /api/tasks creates a task and returns 201', async () => {
     const response = await api('/api/tasks', {
       method: 'POST',
-      body: { title: 'Write e2e tests' } as unknown as BodyInit
+      body: { title: 'Write e2e tests' }
     })
 
     expect(response.status).toBe(201)
@@ -47,13 +63,13 @@ describe('tasks API', () => {
   it('PATCH /api/tasks/:id updates the status', async () => {
     const createResponse = await api('/api/tasks', {
       method: 'POST',
-      body: { title: 'Task to update' } as unknown as BodyInit
+      body: { title: 'Task to update' }
     })
     const created = (await createResponse.json()) as Task
 
     const response = await api(`/api/tasks/${created.id}`, {
       method: 'PATCH',
-      body: { status: 'in_progress' } as unknown as BodyInit
+      body: { status: 'in_progress' }
     })
 
     expect(response.status).toBe(200)
@@ -64,7 +80,7 @@ describe('tasks API', () => {
   it('DELETE /api/tasks/:id removes the task', async () => {
     const createResponse = await api('/api/tasks', {
       method: 'POST',
-      body: { title: 'Task to delete' } as unknown as BodyInit
+      body: { title: 'Task to delete' }
     })
     const created = (await createResponse.json()) as Task
 
@@ -76,21 +92,47 @@ describe('tasks API', () => {
     expect(tasks.find((task) => task.id === created.id)).toBeUndefined()
   })
 
-  it('POST /api/tasks with an empty title returns 400 with field issues', async () => {
+  it('POST /api/tasks with an empty title returns 400 with a field issue', async () => {
     const response = await api('/api/tasks', {
       method: 'POST',
-      body: { title: '' } as unknown as BodyInit
+      body: { title: '' }
     })
 
     expect(response.status).toBe(400)
-    const body = (await response.json()) as { data?: { issues?: Record<string, string[]> } }
-    expect(body.data?.issues?.title).toBeTruthy()
+    const body = (await response.json()) as ValidationErrorBody
+    expect(body.data?.issues?.fieldErrors?.title).toBeTruthy()
+  })
+
+  it('POST /api/tasks with forged id and createdAt returns 400', async () => {
+    const response = await api('/api/tasks', {
+      method: 'POST',
+      body: { title: 'Forged fields', id: 'forged-id', createdAt: '2020-01-01T00:00:00.000Z' }
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('PATCH /api/tasks/:id with an empty body returns 400 with a root issue', async () => {
+    const createResponse = await api('/api/tasks', {
+      method: 'POST',
+      body: { title: 'Task for empty patch' }
+    })
+    const created = (await createResponse.json()) as Task
+
+    const response = await api(`/api/tasks/${created.id}`, {
+      method: 'PATCH',
+      body: {}
+    })
+
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as ValidationErrorBody
+    expect(body.data?.issues?.formErrors?.length).toBeGreaterThan(0)
   })
 
   it('PATCH /api/tasks/:id with an unknown id returns 404', async () => {
     const response = await api('/api/tasks/unknown-id', {
       method: 'PATCH',
-      body: { status: 'done' } as unknown as BodyInit
+      body: { status: 'done' }
     })
 
     expect(response.status).toBe(404)
@@ -100,5 +142,29 @@ describe('tasks API', () => {
     const response = await api('/api/tasks/unknown-id', { method: 'DELETE' })
 
     expect(response.status).toBe(404)
+  })
+
+  it('persists exactly 20 more tasks after 20 parallel POSTs', async () => {
+    const beforeResponse = await api('/api/tasks')
+    const before = (await beforeResponse.json()) as Task[]
+
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        api('/api/tasks', { method: 'POST', body: { title: `Parallel task ${index}` } })
+      )
+    )
+    expect(responses.every((response) => response.status === 201)).toBe(true)
+
+    const afterResponse = await api('/api/tasks')
+    expect(afterResponse.status).toBe(200)
+    const after = (await afterResponse.json()) as Task[]
+
+    expect(Array.isArray(after)).toBe(true)
+    expect(after).toHaveLength(before.length + 20)
+    for (const task of after) {
+      expect(typeof task.id).toBe('string')
+      expect(typeof task.title).toBe('string')
+    }
+    expect(new Set(after.map((task) => task.id)).size).toBe(after.length)
   })
 })
