@@ -1,6 +1,6 @@
 ---
 objective: "Tasks are managed on a Trello-like board: one column per status, drag and drop between and within columns with a persisted order, and a modal to create and edit a task."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Kanban board
