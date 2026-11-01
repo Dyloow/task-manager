@@ -24,7 +24,7 @@ const DONE_TASK_TITLE = 'Set up project repository'
 
 /** Titles rendered in the task list, not the ones only present in the hydration payload. */
 function renderedTaskTitles(html: string): string[] {
-  return [...html.matchAll(/<h2 class="font-medium">([^<]*)<\/h2>/g)].map((match) => match[1])
+  return [...html.matchAll(/<h3 class="font-medium text-slate-900">([^<]*)<\/h3>/g)].map((match) => match[1])
 }
 
 describe('home page SSR', () => {

@@ -1,14 +1,18 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fetch, setup } from '@nuxt/test-utils/e2e'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 // A dedicated fs-backed storage, pre-seeded with data that fails the task
 // schema, isolated in its own file/setup so it never touches the shared
 // 'memory' storage the other home-ssr tests rely on.
 const storageDir = mkdtempSync(join(tmpdir(), 'tasks-corrupted-'))
 writeFileSync(join(storageDir, 'list'), JSON.stringify([{ not: 'a task' }]), 'utf8')
+
+afterAll(() => {
+  rmSync(storageDir, { recursive: true, force: true })
+})
 
 await setup({
   server: true,

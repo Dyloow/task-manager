@@ -1,116 +1,121 @@
 <script setup lang="ts">
-import { z } from 'zod'
-import { taskPrioritySchema, taskStatusSchema } from '#shared/schemas/task'
-import type { PriorityFilter, StatusFilter } from '~/stores/tasks'
+import type { CreateTaskInput, TaskStatus } from '#shared/types/task'
+import { ApiError, type ApiErrorState } from '~/utils/api-error'
+import { STATUS_LABELS } from '~/utils/task-labels'
 
-const statusFilterSchema = z.union([taskStatusSchema, z.literal('all')])
-const priorityFilterSchema = z.union([taskPrioritySchema, z.literal('all')])
-
-const statusOptions: StatusFilter[] = ['all', ...taskStatusSchema.options]
-const priorityOptions: PriorityFilter[] = ['all', ...taskPrioritySchema.options]
-
-function parseFilter<T extends string>(value: unknown, schema: z.ZodType<T>): T {
-  const result = schema.safeParse(value)
-  return result.success ? result.data : ('all' as T)
-}
-
-function queryValue(filter: string): string | undefined {
-  return filter === 'all' ? undefined : filter
-}
-
-function formatLabel(value: string) {
-  return value.replace('_', ' ')
-}
-
-const route = useRoute()
-const router = useRouter()
 const store = useTasksStore()
-
-// Seed the store filters from the URL before the first fetch so a shared,
-// filtered link renders the same list on first paint.
-const initialStatus = parseFilter(route.query.status, statusFilterSchema)
-const initialPriority = parseFilter(route.query.priority, priorityFilterSchema)
-store.setFilters({ status: initialStatus, priority: initialPriority })
-
-// An invalid query value (e.g. `?status=foo`) silently fell back to 'all':
-// drop it from the URL so it doesn't keep claiming a filter that isn't applied.
-if (queryValue(initialStatus) !== route.query.status || queryValue(initialPriority) !== route.query.priority) {
-  router.replace({
-    query: { ...route.query, status: queryValue(initialStatus), priority: queryValue(initialPriority) }
-  })
-}
+const { status: statusFilter, priority: priorityFilter, setStatus, setPriority } = useTaskFilters()
 
 const { pending, error, refresh } = await useAsyncData('tasks', () => store.fetchTasks())
 
-const statusFilter = computed<StatusFilter>({
-  get: () => store.filters.status,
-  set: (value) => store.setFilters({ status: value })
-})
+const isFormOpen = ref(false)
+const isCreating = ref(false)
+const createFormError = ref<ApiErrorState | null>(null)
+const taskFormRef = ref<{ reset: () => void } | null>(null)
 
-const priorityFilter = computed<PriorityFilter>({
-  get: () => store.filters.priority,
-  set: (value) => store.setFilters({ priority: value })
-})
+const filterCounts = computed(() => ({
+  all: store.tasks.length,
+  ...store.countsByStatus
+}))
 
-// Keep the URL and the store filters in sync both ways: picking a filter
-// updates the query, and navigating (back/forward, a shared link) updates
-// the filters. The flag stops the two watchers from bouncing off each other.
-let syncingFromRoute = false
-
-watch([statusFilter, priorityFilter], ([status, priority]) => {
-  if (syncingFromRoute) return
-  router.replace({ query: { ...route.query, status: queryValue(status), priority: queryValue(priority) } })
-})
-
-watch(
-  () => route.query,
-  (query) => {
-    syncingFromRoute = true
-    store.setFilters({
-      status: parseFilter(query.status, statusFilterSchema),
-      priority: parseFilter(query.priority, priorityFilterSchema)
-    })
-    nextTick(() => {
-      syncingFromRoute = false
-    })
+async function handleCreate(input: CreateTaskInput) {
+  createFormError.value = null
+  isCreating.value = true
+  try {
+    await store.createTask(input)
+    taskFormRef.value?.reset()
+    isFormOpen.value = false
+  } catch (cause) {
+    // A 400 is a validation issue the form already reports inline: showing
+    // it again in the banner would duplicate the same message.
+    if (cause instanceof ApiError && cause.statusCode === 400) {
+      createFormError.value = cause.toState()
+      store.clearError()
+    }
+  } finally {
+    isCreating.value = false
   }
-)
+}
+
+function handleStatusChange(id: string, status: TaskStatus) {
+  store.updateStatus(id, status)
+}
+
+function handleDelete(id: string) {
+  store.removeTask(id)
+}
+
+function resetFilters() {
+  setStatus('all')
+  setPriority('all')
+}
 </script>
 
 <template>
-  <main class="min-h-screen bg-slate-50 p-6 text-slate-900">
-    <h1 class="text-2xl font-semibold">Task Manager</h1>
+  <main class="mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6">
+    <header class="flex flex-wrap items-baseline justify-between gap-2">
+      <h1 class="text-2xl font-semibold text-slate-900">Tâches</h1>
+      <p class="text-sm text-slate-600">
+        {{ filterCounts.all }} tâche{{ filterCounts.all > 1 ? 's' : '' }} · {{ filterCounts.done }}
+        {{ STATUS_LABELS.done.toLowerCase() }}{{ filterCounts.done > 1 ? 's' : '' }}
+      </p>
+    </header>
 
-    <form class="mt-4 flex gap-4" @submit.prevent>
-      <label class="flex flex-col gap-1">
-        <span>Status</span>
-        <select v-model="statusFilter">
-          <option v-for="option in statusOptions" :key="option" :value="option">{{ formatLabel(option) }}</option>
-        </select>
-      </label>
-      <label class="flex flex-col gap-1">
-        <span>Priority</span>
-        <select v-model="priorityFilter">
-          <option v-for="option in priorityOptions" :key="option" :value="option">{{ formatLabel(option) }}</option>
-        </select>
-      </label>
-    </form>
+    <AppAlert v-if="store.error" :message="store.error.message" @dismiss="store.clearError" />
 
-    <p v-if="pending" class="mt-4">Loading tasks…</p>
+    <button
+      type="button"
+      class="rounded-md border border-slate-300 px-4 py-2 text-left text-sm font-medium text-slate-700 lg:hidden"
+      @click="isFormOpen = !isFormOpen"
+    >
+      {{ isFormOpen ? 'Fermer le formulaire' : '+ Nouvelle tâche' }}
+    </button>
 
-    <div v-else-if="error" role="alert" class="mt-4">
-      <p>{{ error.message }}</p>
-      <button type="button" @click="refresh()">Retry</button>
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <section
+        :class="isFormOpen ? 'block' : 'hidden'"
+        class="rounded-lg border border-slate-200 bg-white p-4 lg:sticky lg:top-6 lg:block lg:w-72 lg:shrink-0"
+      >
+        <TaskForm
+          ref="taskFormRef"
+          :pending="isCreating"
+          :server-field-errors="createFormError?.fieldErrors"
+          :server-form-errors="createFormError?.formErrors"
+          @submit="handleCreate"
+        />
+      </section>
+
+      <section class="flex min-w-0 flex-1 flex-col gap-4">
+        <TaskFilters
+          :status="statusFilter"
+          :priority="priorityFilter"
+          :counts="filterCounts"
+          @update:status="setStatus"
+          @update:priority="setPriority"
+        />
+
+        <div v-if="error" role="alert" class="flex flex-col items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p>{{ error.message }}</p>
+          <button
+            type="button"
+            class="rounded-md border border-red-300 px-3 py-1.5 font-medium hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+            @click="refresh()"
+          >
+            Réessayer
+          </button>
+        </div>
+
+        <TaskList
+          v-else
+          :tasks="store.visibleTasks"
+          :loading="pending"
+          :has-any-task="store.tasks.length > 0"
+          :pending-ids="store.pendingIds"
+          @update:status="handleStatusChange"
+          @delete="handleDelete"
+          @reset-filters="resetFilters"
+        />
+      </section>
     </div>
-
-    <p v-else-if="store.visibleTasks.length === 0" class="mt-4">No tasks match the current filters.</p>
-
-    <ul v-else class="mt-4 flex flex-col gap-2">
-      <li v-for="task in store.visibleTasks" :key="task.id" class="rounded border border-slate-200 p-3">
-        <h2 class="font-medium">{{ task.title }}</h2>
-        <p>Status: {{ formatLabel(task.status) }}</p>
-        <p>Priority: {{ task.priority }}</p>
-      </li>
-    </ul>
   </main>
 </template>
