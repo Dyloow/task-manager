@@ -102,14 +102,14 @@ describe('toApiError', () => {
     const apiError = toApiError(networkError)
 
     expect(apiError.statusCode).toBeUndefined()
-    expect(apiError.message).toBe('Network error. Check your connection and try again.')
+    expect(apiError.message).toBe('Erreur réseau. Vérifiez votre connexion et réessayez.')
   })
 
   it('yields a generic message for a non-fetch error (a bug, not a connectivity issue)', () => {
     const apiError = toApiError(new Error('boom'))
 
     expect(apiError.statusCode).toBeUndefined()
-    expect(apiError.message).toBe('Unexpected error.')
+    expect(apiError.message).toBe('Erreur inattendue.')
   })
 
   it('is an instance of Error', () => {

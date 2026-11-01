@@ -14,8 +14,12 @@ export const taskSchema = z.object({
   updatedAt: z.string()
 })
 
-const titleSchema = z.string().trim().min(1).max(120)
-const descriptionSchema = z.string().trim().max(1000)
+const titleSchema = z
+  .string()
+  .trim()
+  .min(1, 'Le titre est requis.')
+  .max(120, 'Le titre ne peut pas dépasser 120 caractères.')
+const descriptionSchema = z.string().trim().max(1000, 'La description ne peut pas dépasser 1000 caractères.')
 
 export const createTaskSchema = z.strictObject({
   title: titleSchema,
@@ -33,5 +37,5 @@ export const updateTaskSchema = z
   })
   .partial()
   .refine((patch) => Object.keys(patch).length > 0, {
-    error: 'At least one field is required'
+    error: 'Au moins un champ est requis.'
   })

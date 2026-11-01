@@ -48,9 +48,14 @@ function isFetchError(error: unknown): error is FetchError<ErrorResponseBody> {
   return error instanceof Error && 'statusCode' in error
 }
 
+// Our own fallback wording when there is nothing more specific to show. A
+// server `statusMessage` (English, set by the API) still wins when present:
+// this utility normalizes shape, not translation of arbitrary server text —
+// callers that display a message to the user (the store, in French) replace
+// it with their own copy instead of relying on this fallback.
 const FALLBACK_MESSAGES: Record<number, string> = {
-  404: 'Task not found.',
-  500: 'Something went wrong on the server. Please try again.'
+  404: 'Tâche introuvable.',
+  500: 'Une erreur est survenue côté serveur. Réessayez.'
 }
 
 /**
@@ -61,7 +66,7 @@ export function toApiError(error: unknown): ApiError {
   // A non-fetch error (a bug in our own code) is not a connectivity problem:
   // say so distinctly instead of implying a network issue.
   if (!isFetchError(error)) {
-    return new ApiError({ statusCode: undefined, message: 'Unexpected error.', fieldErrors: {}, formErrors: [] })
+    return new ApiError({ statusCode: undefined, message: 'Erreur inattendue.', fieldErrors: {}, formErrors: [] })
   }
 
   // ofetch defines `statusCode` on every FetchError it throws, even when the
@@ -70,7 +75,7 @@ export function toApiError(error: unknown): ApiError {
   if (statusCode === undefined) {
     return new ApiError({
       statusCode: undefined,
-      message: 'Network error. Check your connection and try again.',
+      message: 'Erreur réseau. Vérifiez votre connexion et réessayez.',
       fieldErrors: {},
       formErrors: []
     })
@@ -83,7 +88,7 @@ export function toApiError(error: unknown): ApiError {
     const fieldErrors = issues.fieldErrors ?? {}
     return new ApiError({
       statusCode,
-      message: formErrors[0] ?? Object.values(fieldErrors)[0]?.[0] ?? 'Invalid request.',
+      message: formErrors[0] ?? Object.values(fieldErrors)[0]?.[0] ?? 'Requête invalide.',
       fieldErrors,
       formErrors
     })
@@ -91,7 +96,7 @@ export function toApiError(error: unknown): ApiError {
 
   return new ApiError({
     statusCode,
-    message: error.statusMessage || FALLBACK_MESSAGES[statusCode] || 'Something went wrong.',
+    message: error.statusMessage || FALLBACK_MESSAGES[statusCode] || 'Une erreur est survenue.',
     fieldErrors: {},
     formErrors: []
   })

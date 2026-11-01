@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
   createTaskSchema,
   taskPrioritySchema,
@@ -49,16 +50,30 @@ describe('createTaskSchema', () => {
     expect(result.description).toBe('details')
   })
 
-  it('rejects an empty title', () => {
+  it('rejects an empty title with a French message', () => {
     const result = createTaskSchema.safeParse({ title: '' })
 
     expect(result.success).toBe(false)
+    if (result.success) return
+    expect(z.flattenError(result.error).fieldErrors.title).toEqual(['Le titre est requis.'])
   })
 
-  it('rejects a title longer than 120 characters', () => {
+  it('rejects a title longer than 120 characters with a French message', () => {
     const result = createTaskSchema.safeParse({ title: 'a'.repeat(121) })
 
     expect(result.success).toBe(false)
+    if (result.success) return
+    expect(z.flattenError(result.error).fieldErrors.title).toEqual(['Le titre ne peut pas dépasser 120 caractères.'])
+  })
+
+  it('rejects a description longer than 1000 characters with a French message', () => {
+    const result = createTaskSchema.safeParse({ title: 'Titre', description: 'a'.repeat(1001) })
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(z.flattenError(result.error).fieldErrors.description).toEqual([
+      'La description ne peut pas dépasser 1000 caractères.'
+    ])
   })
 
   it('rejects an invalid status enum', () => {
@@ -91,10 +106,12 @@ describe('updateTaskSchema', () => {
     expect(result.success).toBe(true)
   })
 
-  it('rejects an empty object', () => {
+  it('rejects an empty object with a French message', () => {
     const result = updateTaskSchema.safeParse({})
 
     expect(result.success).toBe(false)
+    if (result.success) return
+    expect(z.flattenError(result.error).formErrors).toEqual(['Au moins un champ est requis.'])
   })
 
   it('rejects unknown keys', () => {

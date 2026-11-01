@@ -26,12 +26,18 @@ await setup({
 })
 
 describe('home page SSR with corrupted task data', () => {
-  it('GET / still renders (200) with an error state instead of crashing', async () => {
+  it('GET / still renders (200) with a French error state instead of crashing', async () => {
     const response = await fetch('/')
     const html = await response.text()
 
     expect(response.status).toBe(200)
     expect(html).toContain('role="alert"')
-    expect(html).toContain('Task data is corrupted')
+
+    // The visible alert block shows a French, readable message, not the
+    // server's raw (English) statusMessage — which may still legitimately
+    // appear elsewhere in the page, inside the hydration data payload.
+    const alertBlock = html.match(/<div role="alert"[^>]*>.*?<\/div>/s)?.[0] ?? ''
+    expect(alertBlock).toContain('Impossible de charger les tâches.')
+    expect(alertBlock).not.toContain('Task data is corrupted')
   })
 })

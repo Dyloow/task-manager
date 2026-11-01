@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { CreateTaskInput, TaskStatus } from '#shared/types/task'
 import { ApiError, type ApiErrorState } from '~/utils/api-error'
-import { STATUS_LABELS } from '~/utils/task-labels'
+
+const LOAD_ERROR_MESSAGE = 'Impossible de charger les tâches.'
 
 const store = useTasksStore()
 const { status: statusFilter, priority: priorityFilter, setStatus, setPriority } = useTaskFilters()
@@ -57,15 +58,16 @@ function resetFilters() {
       <h1 class="text-xl font-semibold tracking-tight text-ink">Tâches</h1>
       <p class="font-mono text-sm text-ink-soft">
         {{ filterCounts.all }} tâche{{ filterCounts.all > 1 ? 's' : '' }} · {{ filterCounts.done }}
-        {{ STATUS_LABELS.done.toLowerCase() }}{{ filterCounts.done > 1 ? 's' : '' }}
+        {{ filterCounts.done > 1 ? 'terminées' : 'terminée' }}
       </p>
     </header>
 
-    <AppAlert v-if="store.error" :message="store.error.message" @dismiss="store.clearError" />
+    <!-- Mutation errors only: a load failure already has its own retry block below, so this never doubles up. -->
+    <AppAlert v-if="store.error && !error" :message="store.error.message" @dismiss="store.clearError" />
 
     <button
       type="button"
-      class="flex items-center justify-between rounded-control border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent lg:hidden"
+      class="flex items-center justify-between rounded-control border border-border-control bg-surface px-4 py-2.5 text-sm font-medium text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent lg:hidden"
       :aria-expanded="isFormOpen"
       @click="isFormOpen = !isFormOpen"
     >
@@ -100,7 +102,7 @@ function resetFilters() {
           role="alert"
           class="flex flex-col items-start gap-2 rounded-card border border-danger/25 bg-danger-soft p-4 text-sm text-danger-strong"
         >
-          <p>{{ error.message }}</p>
+          <p>{{ LOAD_ERROR_MESSAGE }}</p>
           <button
             type="button"
             class="rounded-control border border-danger/40 px-3 py-1.5 font-medium hover:bg-danger-soft/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-danger"
