@@ -1,6 +1,6 @@
 ---
 objective: "A Pinia store owns the task list, hydrated by SSR on first render, with optimistic mutations that roll back on server errors."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Tasks store and SSR load
