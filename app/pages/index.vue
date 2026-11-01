@@ -4,7 +4,7 @@ import { ApiError, type ApiErrorState } from '~/utils/api-error'
 import { ACTION_ERROR_MESSAGES } from '~/stores/tasks'
 
 const store = useTasksStore()
-const { status: statusFilter, priority: priorityFilter, setStatus, setPriority } = useTaskFilters()
+const { status: statusFilter, priority: priorityFilter, setStatus, setPriority, resetFilters } = useTaskFilters()
 
 const { pending, error, refresh } = await useAsyncData('tasks', () => store.fetchTasks())
 
@@ -53,14 +53,6 @@ function handleStatusChange(id: string, status: TaskStatus) {
 
 function handleDelete(id: string) {
   store.removeTask(id)
-}
-
-// Sequential, not fired together: each `router.push` reads `route.query` at
-// call time, so firing both before the first lands would have the second
-// overwrite the first's change with a stale query.
-async function resetFilters() {
-  await setStatus('all')
-  await setPriority('all')
 }
 </script>
 

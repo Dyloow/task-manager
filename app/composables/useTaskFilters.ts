@@ -26,6 +26,11 @@ function queryValue(filter: string): string | undefined {
  * entry (Back returns to the previous filter); the watcher's own cleanup of
  * an invalid value `replace`s instead, since that is a correction, not a
  * navigation the user should be able to undo with Back.
+ *
+ * `resetFilters` clears both in one `push`: two separate pushes would each
+ * read `route.query` before the other lands, so the second would overwrite
+ * the first (status filter resets, then gets reapplied) and leave Back on a
+ * single-filter state the user never actually saw.
  */
 export function useTaskFilters() {
   const route = useRoute()
@@ -56,10 +61,15 @@ export function useTaskFilters() {
     return router.push({ query: { ...route.query, priority: queryValue(priority) } })
   }
 
+  function resetFilters() {
+    return router.push({ query: { ...route.query, status: undefined, priority: undefined } })
+  }
+
   return {
     status: computed(() => store.filters.status),
     priority: computed(() => store.filters.priority),
     setStatus,
-    setPriority
+    setPriority,
+    resetFilters
   }
 }
