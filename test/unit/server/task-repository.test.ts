@@ -166,10 +166,10 @@ describe('createTaskRepository', () => {
       repository.list()
     ])
 
-    expect(listResult.length).toBeGreaterThanOrEqual(seed.length)
-    for (const task of listResult) {
-      expect(typeof task.id).toBe('string')
-      expect(typeof task.title).toBe('string')
-    }
+    // The queue runs in call order, so the list sees both creates.
+    expect(listResult).toHaveLength(seed.length + 2)
+    expect(listResult.map((task) => task.title)).toEqual(
+      expect.arrayContaining(['First', 'Second'])
+    )
   })
 })

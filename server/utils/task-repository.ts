@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { z } from 'zod'
 import type { Storage } from 'unstorage'
 import type { CreateTaskInput, Task, UpdateTaskInput } from '#shared/types/task'
 import { taskSchema } from '../../shared/schemas/task'
@@ -23,6 +24,8 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
   function parseTasks(value: unknown): Task[] {
     const result = taskSchema.array().safeParse(value)
     if (!result.success) {
+      // Keep the details in the server log, never in the response.
+      console.error(`[tasks] stored data is invalid:\n${z.prettifyError(result.error)}`)
       throw createCorruptedDataError()
     }
     return result.data
@@ -38,33 +41,30 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
     return parseTasks(stored)
   }
 
-  // Both reads and writes chain on this single queue, in call order, so a read
+  // Reads and writes chain on this single queue, in call order, so a read
   // never observes a write that is still in flight and writes never overlap.
-  function enqueueRead<T>(read: (tasks: Task[]) => T): Promise<T> {
-    const run = queue.then(async () => read(await readTasks()))
+  function enqueue<T>(step: (tasks: Task[]) => Promise<T> | T): Promise<T> {
+    const run = queue.then(async () => step(await readTasks()))
     // Keep the queue alive even if this step fails, so later operations still run.
     queue = run.catch(() => undefined)
     return run
   }
 
-  function enqueueWrite<T>(mutate: (tasks: Task[]) => Promise<{ tasks: Task[], result: T }>): Promise<T> {
-    const run = queue.then(async () => {
-      const tasks = await readTasks()
-      const { tasks: nextTasks, result } = await mutate(tasks)
+  function enqueueWrite<T>(mutate: (tasks: Task[]) => { tasks: Task[], result: T }): Promise<T> {
+    return enqueue(async (tasks) => {
+      const { tasks: nextTasks, result } = mutate(tasks)
       await storage.setItem(TASKS_KEY, nextTasks)
       return result
     })
-    queue = run.catch(() => undefined)
-    return run
   }
 
   return {
     list() {
-      return enqueueRead((tasks) => tasks)
+      return enqueue((tasks) => tasks)
     },
 
     create(input) {
-      return enqueueWrite(async (tasks) => {
+      return enqueueWrite((tasks) => {
         const now = new Date().toISOString()
         const task: Task = {
           id: crypto.randomUUID(),
@@ -80,7 +80,7 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
     },
 
     update(id, patch) {
-      return enqueueWrite(async (tasks) => {
+      return enqueueWrite((tasks) => {
         const index = tasks.findIndex((task) => task.id === id)
         const existing = tasks[index]
         if (!existing) {
@@ -98,7 +98,7 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
     },
 
     remove(id) {
-      return enqueueWrite(async (tasks) => {
+      return enqueueWrite((tasks) => {
         const exists = tasks.some((task) => task.id === id)
         if (!exists) {
           return { tasks, result: false }
