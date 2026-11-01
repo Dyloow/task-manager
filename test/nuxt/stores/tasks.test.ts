@@ -1,8 +1,8 @@
 import { createError, readBody } from 'h3'
 import { registerEndpoint } from '@nuxt/test-utils/runtime'
 import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Task, TaskStatus } from '#shared/types/task'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Task } from '#shared/types/task'
 import { useTasksStore } from '~/stores/tasks'
 
 const cleanups: Array<() => void> = []
@@ -88,49 +88,6 @@ describe('useTasksStore', () => {
     })
     expect(store.tasks).toEqual([])
     expect(store.error?.fieldErrors.title).toEqual(['Title is required'])
-  })
-
-  it('updateStatus changes the status immediately and keeps it after a 200', async () => {
-    const original = makeTask({ id: 'task-1', status: 'todo' })
-    const updated = { ...original, status: 'done' as const, updatedAt: '2026-01-02T00:00:00.000Z' }
-    let resolveServer!: (task: Task) => void
-    mockEndpoint('/api/tasks/task-1', {
-      method: 'PATCH',
-      handler: () => new Promise<Task>((resolve) => { resolveServer = resolve })
-    })
-
-    const store = useTasksStore()
-    store.tasks = [original]
-
-    const pending = store.updateStatus('task-1', 'done')
-    expect(store.tasks[0]!.status).toBe('done')
-    expect(store.isPending('task-1')).toBe(true)
-
-    resolveServer(updated)
-    await pending
-
-    expect(store.tasks[0]).toEqual(updated)
-    expect(store.isPending('task-1')).toBe(false)
-    expect(store.error).toBeNull()
-  })
-
-  it('updateStatus restores the previous status and exposes the error on a 500', async () => {
-    const original = makeTask({ id: 'task-1', status: 'todo' })
-    mockEndpoint('/api/tasks/task-1', {
-      method: 'PATCH',
-      handler: () => {
-        throw createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
-      }
-    })
-
-    const store = useTasksStore()
-    store.tasks = [original]
-
-    await store.updateStatus('task-1', 'done')
-
-    expect(store.tasks).toEqual([original])
-    expect(store.error?.statusCode).toBe(500)
-    expect(store.isPending('task-1')).toBe(false)
   })
 
   it('removeTask removes the task immediately and keeps it gone after a 204', async () => {
@@ -239,41 +196,6 @@ describe('useTasksStore', () => {
     expect(store.error).toBeNull()
   })
 
-  it('updateStatus rollback does not clobber a newer update on the same task, and pendingIds counts in-flight calls', async () => {
-    const original = makeTask({ id: 'task-1', status: 'todo' })
-    const succeeded = { ...original, status: 'done' as const, updatedAt: '2026-01-02T00:00:00.000Z' }
-
-    let rejectInProgress!: (error: unknown) => void
-    mockEndpoint('/api/tasks/task-1', {
-      method: 'PATCH',
-      handler: async (event) => {
-        const body = await readBody<{ status: TaskStatus }>(event)
-        if (body.status === 'done') return succeeded
-        return new Promise((_resolve, reject) => { rejectInProgress = reject })
-      }
-    })
-
-    const store = useTasksStore()
-    store.tasks = [original]
-
-    // A targets 'in_progress' and stays pending; B targets 'done' and resolves first.
-    const callA = store.updateStatus('task-1', 'in_progress')
-    expect(store.isPending('task-1')).toBe(true)
-
-    await store.updateStatus('task-1', 'done')
-    expect(store.tasks[0]).toEqual(succeeded)
-    // A is still in flight: the counter must not have been cleared by B.
-    expect(store.isPending('task-1')).toBe(true)
-
-    rejectInProgress(createError({ statusCode: 500, statusMessage: 'Task data is corrupted' }))
-    await callA
-
-    // A's rollback must not overwrite B's successful, newer result.
-    expect(store.tasks[0]).toEqual(succeeded)
-    expect(store.error?.statusCode).toBe(500)
-    expect(store.isPending('task-1')).toBe(false)
-  })
-
   it('fetchTasks clears a previous error on success', async () => {
     mockEndpoint('/api/tasks', {
       method: 'GET',
@@ -379,6 +301,58 @@ describe('useTasksStore', () => {
     expect(store.tasks).toEqual(serverList)
     expect(store.error?.message).toBe('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
     expect(store.isPending('task-1')).toBe(false)
+  })
+
+  it('moveTask on failure defers the resync while another mutation is still pending, then runs it once that settles', async () => {
+    const todo = makeTask({ id: 'task-1', status: 'todo', position: 0 })
+    const other = makeTask({ id: 'task-2', status: 'todo', position: 1 })
+    mockEndpoint('/api/tasks/task-1/move', {
+      method: 'POST',
+      handler: () => {
+        throw createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
+      }
+    })
+
+    let resolveOtherDelete!: () => void
+    mockEndpoint('/api/tasks/task-2', {
+      method: 'DELETE',
+      handler: () => new Promise((resolve) => { resolveOtherDelete = () => resolve(null) })
+    })
+
+    let getCalls = 0
+    const serverList = [todo, other]
+    mockEndpoint('/api/tasks', {
+      method: 'GET',
+      handler: () => {
+        getCalls++
+        return serverList
+      }
+    })
+
+    const store = useTasksStore()
+    store.tasks = [todo, other]
+
+    // task-2's delete starts and stays pending throughout the failed move below.
+    const deletePromise = store.removeTask('task-2')
+    expect(store.isPending('task-2')).toBe(true)
+
+    await store.moveTask('task-1', 'in_progress', null)
+
+    // The delete is still in flight: the resync must not have run yet.
+    expect(getCalls).toBe(0)
+    expect(store.error?.message).toBe('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
+
+    resolveOtherDelete()
+    await deletePromise
+    // The deferred resync is fire-and-forget from `clearPending`: wait for
+    // the store state it writes, not just for the mock to have been called.
+    await vi.waitUntil(() => store.tasks.length === serverList.length)
+
+    expect(getCalls).toBe(1)
+    // The deferred resync ran once the delete settled, and the move's own
+    // banner survives it (not cleared by `fetchTasks`' own success path).
+    expect(store.tasks).toEqual(serverList)
+    expect(store.error?.message).toBe('Impossible de déplacer la tâche. Le tableau a été resynchronisé.')
   })
 
   it('updateTask waits for the server, then applies the returned task (pessimistic)', async () => {

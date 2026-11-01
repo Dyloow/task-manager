@@ -1,5 +1,6 @@
 import type { CreateTaskInput, MoveTaskInput, Task, TaskPriority, TaskStatus, UpdateTaskInput } from '#shared/types/task'
 import { taskStatusSchema } from '#shared/schemas/task'
+import { applyMove } from '#shared/utils/task-order'
 import { toApiError, type ApiError, type ApiErrorState } from '~/utils/api-error'
 
 export type StatusFilter = TaskStatus | 'all'
@@ -19,7 +20,6 @@ const STATUSES = taskStatusSchema.options
 export const ACTION_ERROR_MESSAGES = {
   load: 'Impossible de charger les tâches.',
   create: 'Impossible de créer la tâche.',
-  update: 'Impossible de mettre à jour la tâche. Modification annulée.',
   delete: 'Impossible de supprimer la tâche. Elle a été restaurée.',
   move: 'Impossible de déplacer la tâche. Le tableau a été resynchronisé.',
   save: "Impossible d'enregistrer les modifications."
@@ -27,50 +27,6 @@ export const ACTION_ERROR_MESSAGES = {
 
 function toActionErrorState(apiError: ApiError, action: keyof typeof ACTION_ERROR_MESSAGES): ApiErrorState {
   return { ...apiError.toState(), message: ACTION_ERROR_MESSAGES[action] }
-}
-
-/** Tasks of one status, ranked by current `position` ascending. */
-function columnOf(tasks: Task[], status: TaskStatus): Task[] {
-  return tasks.filter((task) => task.status === status).sort((a, b) => a.position - b.position)
-}
-
-/** Renumbers a column, already in the order it should keep, to contiguous `0..n-1`. */
-function assignColumnPositions(column: Task[]): Task[] {
-  return column.map((task, index) => ({ ...task, position: index }))
-}
-
-function replaceColumn(tasks: Task[], status: TaskStatus, column: Task[]): Task[] {
-  return [...tasks.filter((task) => task.status !== status), ...column]
-}
-
-/**
- * Mirrors the server's `move` ordering rules locally, for the optimistic
- * update: `null` when `id` is unknown or `beforeId` is not in the target
- * column (the move is then left to the server call, which will 404/400).
- */
-function applyMove(tasks: Task[], id: string, status: TaskStatus, beforeId: string | null): Task[] | null {
-  const existing = tasks.find((task) => task.id === id)
-  if (!existing) return null
-
-  const withoutExisting = tasks.filter((task) => task.id !== id)
-  const targetColumnBefore = columnOf(withoutExisting, status)
-  if (beforeId !== null && !targetColumnBefore.some((task) => task.id === beforeId)) return null
-
-  const moved: Task = { ...existing, status, position: 0 }
-  const insertIndex = beforeId === null ? targetColumnBefore.length : targetColumnBefore.findIndex((task) => task.id === beforeId)
-  const targetColumn = assignColumnPositions([
-    ...targetColumnBefore.slice(0, insertIndex),
-    moved,
-    ...targetColumnBefore.slice(insertIndex)
-  ])
-
-  if (existing.status === status) {
-    return replaceColumn(withoutExisting, status, targetColumn)
-  }
-
-  const sourceColumn = assignColumnPositions(columnOf(withoutExisting, existing.status))
-  const rest = withoutExisting.filter((task) => task.status !== existing.status && task.status !== status)
-  return [...rest, ...sourceColumn, ...targetColumn]
 }
 
 export const useTasksStore = defineStore('tasks', () => {
@@ -103,6 +59,11 @@ export const useTasksStore = defineStore('tasks', () => {
     return counts
   })
 
+  // Set by a failed `moveTask` that found another mutation still in flight:
+  // resyncing now could be overwritten by (or overwrite) that other call's
+  // own write, so the resync is deferred to the moment every call settles.
+  let pendingMoveResync: ApiErrorState | null = null
+
   function isPending(id: string) {
     return pendingIds.value.includes(id)
   }
@@ -116,6 +77,23 @@ export const useTasksStore = defineStore('tasks', () => {
     const index = pendingIds.value.indexOf(id)
     if (index === -1) return
     pendingIds.value = [...pendingIds.value.slice(0, index), ...pendingIds.value.slice(index + 1)]
+
+    if (pendingMoveResync && pendingIds.value.length === 0) {
+      const failureState = pendingMoveResync
+      pendingMoveResync = null
+      void resyncAfterMoveFailure(failureState)
+    }
+  }
+
+  /** Resyncs from the server, then re-applies the move's own banner message: `fetchTasks` clears `error` on success. */
+  async function resyncAfterMoveFailure(failureState: ApiErrorState) {
+    try {
+      await fetchTasks()
+    } catch {
+      // `fetchTasks` already recorded its own load error; nothing more to do.
+      return
+    }
+    error.value = failureState
   }
 
   async function fetchTasks() {
@@ -139,39 +117,6 @@ export const useTasksStore = defineStore('tasks', () => {
       const apiError = toApiError(cause)
       error.value = toActionErrorState(apiError, 'create')
       throw apiError
-    }
-  }
-
-  async function updateStatus(id: string, status: TaskStatus) {
-    const index = tasks.value.findIndex((task) => task.id === id)
-    if (index === -1) return
-
-    const previous = tasks.value[index]!
-    // Mirrors the server: a status change (with no beforeId to place it more
-    // precisely) appends to the end of the target column.
-    const targetColumnLength = tasks.value.filter((task) => task.status === status && task.id !== id).length
-    const optimistic: Task = { ...previous, status, position: targetColumnLength }
-    tasks.value[index] = optimistic
-    markPending(id)
-
-    try {
-      const body = { status } satisfies UpdateTaskInput
-      const updated = await $fetch<Task>(`/api/tasks/${id}`, { method: 'PATCH', body })
-      const currentIndex = tasks.value.findIndex((task) => task.id === id)
-      if (currentIndex !== -1) tasks.value[currentIndex] = updated
-    } catch (cause) {
-      const currentIndex = tasks.value.findIndex((task) => task.id === id)
-      // Only roll back if this task still holds the object WE wrote: a
-      // concurrent call on the same id may have already replaced it with a
-      // newer (possibly successful) state, which must not be clobbered.
-      // `toRaw` is required: reading a reactive array element returns a
-      // fresh proxy wrapping `optimistic`, never `optimistic` itself.
-      if (currentIndex !== -1 && toRaw(tasks.value[currentIndex]) === optimistic) {
-        tasks.value[currentIndex] = previous
-      }
-      error.value = toActionErrorState(toApiError(cause), 'update')
-    } finally {
-      clearPending(id)
     }
   }
 
@@ -222,31 +167,38 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   /**
-   * Reorders a task within or across columns, optimistically (mirroring the
-   * server's ranking rules), then persists it. A failed move does not try to
-   * compute a targeted rollback: a move rewrites ranks across two columns, so
-   * the only reliable recovery is resynchronizing the whole board from the
-   * server, which also repairs anything else that changed meanwhile.
+   * Reorders a task within or across columns, optimistically (the same
+   * ordering rules as the server, from `shared/utils/task-order`), then
+   * persists it. A failed move does not try to compute a targeted rollback:
+   * a move rewrites ranks across two columns, so the only reliable recovery
+   * is resynchronizing the whole board from the server, which also repairs
+   * anything else that changed meanwhile.
+   *
+   * That resync only runs once no other mutation is in flight: another
+   * pending call's own write could otherwise race a resync `GET` either way
+   * (the resync overwriting that call's not-yet-applied result, or that
+   * call's later write undoing the resync) — `clearPending` runs it instead,
+   * the moment `pendingIds` actually reaches zero.
    */
   async function moveTask(id: string, status: TaskStatus, beforeId: string | null) {
-    const optimistic = applyMove(tasks.value, id, status, beforeId)
-    if (!optimistic) return
+    const result = applyMove(tasks.value, id, status, beforeId, new Date().toISOString())
+    if (result.outcome !== 'ok') return
 
-    tasks.value = optimistic
+    tasks.value = result.tasks
     markPending(id)
 
     try {
       const body = { status, beforeId } satisfies MoveTaskInput
       await $fetch<Task>(`/api/tasks/${id}/move`, { method: 'POST', body })
     } catch (cause) {
-      const apiError = toApiError(cause)
-      try {
-        await fetchTasks()
-      } catch {
-        // `fetchTasks` already recorded its own load error; nothing more to do.
+      const failureState = toActionErrorState(toApiError(cause), 'move')
+      error.value = failureState
+      if (pendingIds.value.length === 1) {
+        // Only this call is pending (its own entry, not yet cleared): safe to resync right away.
+        await resyncAfterMoveFailure(failureState)
+      } else {
+        pendingMoveResync = failureState
       }
-      // `fetchTasks`, on success, clears `error`: set the move's own message after it.
-      error.value = toActionErrorState(apiError, 'move')
     } finally {
       clearPending(id)
     }
@@ -270,7 +222,6 @@ export const useTasksStore = defineStore('tasks', () => {
     isPending,
     fetchTasks,
     createTask,
-    updateStatus,
     updateTask,
     removeTask,
     moveTask,

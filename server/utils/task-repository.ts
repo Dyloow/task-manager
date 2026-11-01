@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { Storage } from 'unstorage'
 import type { CreateTaskInput, MoveTaskInput, Task, TaskStatus, UpdateTaskInput } from '#shared/types/task'
 import { taskSchema, taskStatusSchema } from '../../shared/schemas/task'
+import { applyMove as applyMoveOrder, assignColumnPositions, columnOf, replaceColumn } from '../../shared/utils/task-order'
 import seedTasks from '../data/tasks.json'
 
 const TASKS_KEY = 'list'
@@ -29,20 +30,6 @@ export interface TaskRepository {
 
 function createCorruptedDataError() {
   return createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
-}
-
-/** Tasks of one status, ranked by current `position` ascending. */
-function columnOf(tasks: Task[], status: TaskStatus): Task[] {
-  return tasks.filter((task) => task.status === status).sort((a, b) => a.position - b.position)
-}
-
-/** Renumbers a column, already in the order it should keep, to contiguous `0..n-1`. */
-function assignColumnPositions(column: Task[]): Task[] {
-  return column.map((task, index) => ({ ...task, position: index }))
-}
-
-function replaceColumn(tasks: Task[], status: TaskStatus, column: Task[]): Task[] {
-  return [...tasks.filter((task) => task.status !== status), ...column]
 }
 
 /**
@@ -184,41 +171,12 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
 
     move(id, input) {
       return enqueueWrite<MoveResult>((tasks) => {
-        const existing = tasks.find((task) => task.id === id)
-        if (!existing) {
-          return { tasks, result: { outcome: 'not-found' } }
+        const result = applyMoveOrder(tasks, id, input.status, input.beforeId, new Date().toISOString())
+
+        if (result.outcome !== 'ok') {
+          return { tasks, result: { outcome: result.outcome } }
         }
-
-        const { status: targetStatus, beforeId } = input
-        const sourceStatus = existing.status
-        const withoutExisting = tasks.filter((task) => task.id !== id)
-        const targetColumnBefore = columnOf(withoutExisting, targetStatus)
-
-        if (beforeId !== null && !targetColumnBefore.some((task) => task.id === beforeId)) {
-          return { tasks, result: { outcome: 'invalid-before-id' } }
-        }
-
-        const now = new Date().toISOString()
-        // `position` is a placeholder here: `assignColumnPositions` below renumbers the whole column.
-        const moved: Task = { ...existing, status: targetStatus, updatedAt: now, position: 0 }
-        const insertIndex = beforeId === null ? targetColumnBefore.length : targetColumnBefore.findIndex((task) => task.id === beforeId)
-        const targetColumn = assignColumnPositions([
-          ...targetColumnBefore.slice(0, insertIndex),
-          moved,
-          ...targetColumnBefore.slice(insertIndex)
-        ])
-
-        let nextTasks: Task[]
-        if (sourceStatus === targetStatus) {
-          nextTasks = replaceColumn(withoutExisting, targetStatus, targetColumn)
-        } else {
-          const sourceColumn = assignColumnPositions(columnOf(withoutExisting, sourceStatus))
-          const rest = withoutExisting.filter((task) => task.status !== sourceStatus && task.status !== targetStatus)
-          nextTasks = [...rest, ...sourceColumn, ...targetColumn]
-        }
-
-        const movedTask = targetColumn.find((task) => task.id === id)!
-        return { tasks: nextTasks, result: { outcome: 'ok', task: movedTask } }
+        return { tasks: result.tasks, result: { outcome: 'ok', task: result.task } }
       })
     }
   }
