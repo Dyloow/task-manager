@@ -105,10 +105,16 @@ describe('toApiError', () => {
     expect(apiError.message).toBe('Network error. Check your connection and try again.')
   })
 
-  it('yields a readable message for a non-fetch error', () => {
+  it('yields a generic message for a non-fetch error (a bug, not a connectivity issue)', () => {
     const apiError = toApiError(new Error('boom'))
 
     expect(apiError.statusCode).toBeUndefined()
-    expect(apiError.message).toBe('Network error. Check your connection and try again.')
+    expect(apiError.message).toBe('Unexpected error.')
+  })
+
+  it('is an instance of Error', () => {
+    const apiError = toApiError(new Error('boom'))
+
+    expect(apiError).toBeInstanceOf(Error)
   })
 })

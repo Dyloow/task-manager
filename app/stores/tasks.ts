@@ -1,5 +1,6 @@
+import { toRaw } from 'vue'
 import type { CreateTaskInput, Task, TaskPriority, TaskStatus, UpdateTaskInput } from '#shared/types/task'
-import { toApiError, type ApiError } from '~/utils/api-error'
+import { toApiError, ApiError } from '~/utils/api-error'
 
 export type StatusFilter = TaskStatus | 'all'
 export type PriorityFilter = TaskPriority | 'all'
@@ -35,17 +36,24 @@ export const useTasksStore = defineStore('tasks', () => {
     return pendingIds.value.includes(id)
   }
 
+  // Concurrent mutations can target the same id (e.g. two quick status
+  // changes). `pendingIds` holds one entry per in-flight call on that id, so
+  // `isPending` stays true until every one of them has cleared its own entry
+  // (plain occurrence counting via array multiplicity, not a Set/Map).
   function markPending(id: string) {
     pendingIds.value = [...pendingIds.value, id]
   }
 
   function clearPending(id: string) {
-    pendingIds.value = pendingIds.value.filter((pendingId) => pendingId !== id)
+    const index = pendingIds.value.indexOf(id)
+    if (index === -1) return
+    pendingIds.value = [...pendingIds.value.slice(0, index), ...pendingIds.value.slice(index + 1)]
   }
 
   async function fetchTasks() {
     try {
       tasks.value = await $fetch<Task[]>('/api/tasks')
+      error.value = null
       return tasks.value
     } catch (cause) {
       const apiError = toApiError(cause)
@@ -71,7 +79,8 @@ export const useTasksStore = defineStore('tasks', () => {
     if (index === -1) return
 
     const previous = tasks.value[index]!
-    tasks.value[index] = { ...previous, status }
+    const optimistic: Task = { ...previous, status }
+    tasks.value[index] = optimistic
     markPending(id)
 
     try {
@@ -81,7 +90,14 @@ export const useTasksStore = defineStore('tasks', () => {
       if (currentIndex !== -1) tasks.value[currentIndex] = updated
     } catch (cause) {
       const currentIndex = tasks.value.findIndex((task) => task.id === id)
-      if (currentIndex !== -1) tasks.value[currentIndex] = previous
+      // Only roll back if this task still holds the object WE wrote: a
+      // concurrent call on the same id may have already replaced it with a
+      // newer (possibly successful) state, which must not be clobbered.
+      // `toRaw` is required: reading a reactive array element returns a
+      // fresh proxy wrapping `optimistic`, never `optimistic` itself.
+      if (currentIndex !== -1 && toRaw(tasks.value[currentIndex]) === optimistic) {
+        tasks.value[currentIndex] = previous
+      }
       error.value = toApiError(cause)
     } finally {
       clearPending(id)
@@ -89,20 +105,22 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function removeTask(id: string) {
-    const snapshot = tasks.value
-    if (!snapshot.some((task) => task.id === id)) return
+    const index = tasks.value.findIndex((task) => task.id === id)
+    if (index === -1) return
 
-    tasks.value = snapshot.filter((task) => task.id !== id)
+    const removed = tasks.value[index]!
+    tasks.value = tasks.value.filter((task) => task.id !== id)
     markPending(id)
 
     try {
       await $fetch(`/api/tasks/${id}`, { method: 'DELETE' })
     } catch (cause) {
       const apiError = toApiError(cause)
-      if (apiError.statusCode === 404) {
-        // Already gone server-side: the optimistic removal already matches reality.
-      } else {
-        tasks.value = snapshot
+      if (apiError.statusCode !== 404) {
+        // Reinsert only the task we removed, at its original (bounded) index:
+        // other mutations may have changed the rest of the list meanwhile.
+        const insertAt = Math.min(index, tasks.value.length)
+        tasks.value = [...tasks.value.slice(0, insertAt), removed, ...tasks.value.slice(insertAt)]
         error.value = apiError
       }
     } finally {

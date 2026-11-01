@@ -1,8 +1,8 @@
-import { createError } from 'h3'
+import { createError, readBody } from 'h3'
 import { registerEndpoint } from '@nuxt/test-utils/runtime'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Task } from '#shared/types/task'
+import type { Task, TaskStatus } from '#shared/types/task'
 import { useTasksStore } from '~/stores/tasks'
 
 const cleanups: Array<() => void> = []
@@ -168,6 +168,38 @@ describe('useTasksStore', () => {
     expect(store.error?.statusCode).toBe(500)
   })
 
+  it('removeTask on failure reinserts only the removed task, keeping other concurrent mutations', async () => {
+    const x = makeTask({ id: 'task-x', title: 'X' })
+    const y = makeTask({ id: 'task-y', title: 'Y' })
+    const w = makeTask({ id: 'task-w', title: 'W' })
+    const z = makeTask({ id: 'task-z', title: 'Z' })
+
+    let rejectDeleteX!: (error: unknown) => void
+    mockEndpoint('/api/tasks/task-x', {
+      method: 'DELETE',
+      handler: () => new Promise((_resolve, reject) => { rejectDeleteX = reject })
+    })
+    mockEndpoint('/api/tasks/task-y', { method: 'DELETE', handler: () => null })
+    mockEndpoint('/api/tasks', { method: 'POST', handler: () => z })
+
+    const store = useTasksStore()
+    store.tasks = [x, y, w]
+
+    // x: delete starts and stays pending. y: delete completes. z: created.
+    const deleteX = store.removeTask('task-x')
+    await store.removeTask('task-y')
+    await store.createTask({ title: 'Z', description: '', status: 'todo', priority: 'medium' })
+
+    expect(store.tasks.map((task) => task.id)).toEqual(['task-w', 'task-z'])
+
+    // x's delete finally fails: only x comes back, at its original (bounded) index.
+    rejectDeleteX(createError({ statusCode: 500, statusMessage: 'Task data is corrupted' }))
+    await deleteX
+
+    expect(store.tasks.map((task) => task.id)).toEqual(['task-x', 'task-w', 'task-z'])
+    expect(store.error?.statusCode).toBe(500)
+  })
+
   it('removeTask on an already-deleted task (404) stays removed, with no error', async () => {
     const task = makeTask({ id: 'task-1' })
     mockEndpoint('/api/tasks/task-1', {
@@ -183,6 +215,62 @@ describe('useTasksStore', () => {
     await store.removeTask('task-1')
 
     expect(store.tasks).toEqual([])
+    expect(store.error).toBeNull()
+  })
+
+  it('updateStatus rollback does not clobber a newer update on the same task, and pendingIds counts in-flight calls', async () => {
+    const original = makeTask({ id: 'task-1', status: 'todo' })
+    const succeeded = { ...original, status: 'done' as const, updatedAt: '2026-01-02T00:00:00.000Z' }
+
+    let rejectInProgress!: (error: unknown) => void
+    mockEndpoint('/api/tasks/task-1', {
+      method: 'PATCH',
+      handler: async (event) => {
+        const body = await readBody<{ status: TaskStatus }>(event)
+        if (body.status === 'done') return succeeded
+        return new Promise((_resolve, reject) => { rejectInProgress = reject })
+      }
+    })
+
+    const store = useTasksStore()
+    store.tasks = [original]
+
+    // A targets 'in_progress' and stays pending; B targets 'done' and resolves first.
+    const callA = store.updateStatus('task-1', 'in_progress')
+    expect(store.isPending('task-1')).toBe(true)
+
+    await store.updateStatus('task-1', 'done')
+    expect(store.tasks[0]).toEqual(succeeded)
+    // A is still in flight: the counter must not have been cleared by B.
+    expect(store.isPending('task-1')).toBe(true)
+
+    rejectInProgress(createError({ statusCode: 500, statusMessage: 'Task data is corrupted' }))
+    await callA
+
+    // A's rollback must not overwrite B's successful, newer result.
+    expect(store.tasks[0]).toEqual(succeeded)
+    expect(store.error?.statusCode).toBe(500)
+    expect(store.isPending('task-1')).toBe(false)
+  })
+
+  it('fetchTasks clears a previous error on success', async () => {
+    mockEndpoint('/api/tasks', {
+      method: 'GET',
+      handler: () => {
+        throw createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
+      },
+      once: true
+    })
+
+    const store = useTasksStore()
+    await expect(store.fetchTasks()).rejects.toMatchObject({ statusCode: 500 })
+    expect(store.error?.statusCode).toBe(500)
+
+    const seeded = [makeTask({ id: 'task-1' })]
+    mockEndpoint('/api/tasks', { method: 'GET', handler: () => seeded })
+
+    await store.fetchTasks()
+
     expect(store.error).toBeNull()
   })
 
