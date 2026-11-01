@@ -28,6 +28,12 @@ function createRepository(): TaskRepository {
   return createTaskRepository(storage, seed)
 }
 
+function createRepositoryWithStorage() {
+  const storage = createStorage({ driver: memoryDriver() })
+  const repository = createTaskRepository(storage, seed)
+  return { storage, repository }
+}
+
 describe('createTaskRepository', () => {
   let repository: TaskRepository
 
@@ -109,5 +115,61 @@ describe('createTaskRepository', () => {
 
     const ids = new Set(tasks.map((task) => task.id))
     expect(ids.size).toBe(tasks.length)
+  })
+
+  it('rejects a non-array stored value without overwriting it', async () => {
+    const { storage, repository } = createRepositoryWithStorage()
+    await storage.setItem('list', { a: 1 })
+
+    await expect(repository.list()).rejects.toMatchObject({ statusCode: 500 })
+    await expect(repository.create(validInput)).rejects.toMatchObject({ statusCode: 500 })
+    expect(await storage.getItem('list')).toEqual({ a: 1 })
+  })
+
+  it('rejects a stored value that is not even an object without overwriting it', async () => {
+    const { storage, repository } = createRepositoryWithStorage()
+    await storage.setItem('list', 'not-an-array')
+
+    await expect(repository.list()).rejects.toMatchObject({ statusCode: 500 })
+    await expect(repository.create(validInput)).rejects.toMatchObject({ statusCode: 500 })
+    expect(await storage.getItem('list')).toBe('not-an-array')
+  })
+
+  it('rejects a corrupted seed on first read without writing it', async () => {
+    const storage = createStorage({ driver: memoryDriver() })
+    const repository = createTaskRepository(storage, [{ not: 'a task' }])
+
+    await expect(repository.list()).rejects.toMatchObject({ statusCode: 500 })
+    expect(await storage.getItem('list')).toBeNull()
+  })
+
+  it('keeps accepting mutations after an earlier one rejects on corrupted data', async () => {
+    const { storage, repository } = createRepositoryWithStorage()
+    await storage.setItem('list', 'not-an-array')
+
+    await expect(repository.create(validInput)).rejects.toMatchObject({ statusCode: 500 })
+
+    await storage.setItem('list', seed)
+    const created = await repository.create(validInput)
+
+    const tasks = await repository.list()
+    expect(tasks).toContainEqual(created)
+    expect(tasks).toHaveLength(seed.length + 1)
+  })
+
+  it('serializes list() with in-flight writes', async () => {
+    await repository.list()
+
+    const [, , listResult] = await Promise.all([
+      repository.create({ ...validInput, title: 'First' }),
+      repository.create({ ...validInput, title: 'Second' }),
+      repository.list()
+    ])
+
+    expect(listResult.length).toBeGreaterThanOrEqual(seed.length)
+    for (const task of listResult) {
+      expect(typeof task.id).toBe('string')
+      expect(typeof task.title).toBe('string')
+    }
   })
 })
