@@ -11,6 +11,7 @@ const seed: Task[] = [
     description: '',
     status: 'todo',
     priority: 'medium',
+    position: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z'
   }
@@ -171,5 +172,197 @@ describe('createTaskRepository', () => {
     expect(listResult.map((task) => task.title)).toEqual(
       expect.arrayContaining(['First', 'Second'])
     )
+  })
+})
+
+describe('ordering and move', () => {
+  // Two columns with two ranked tasks each, so a move can change rank
+  // within a column and across columns.
+  const orderedSeed: Task[] = [
+    {
+      id: 'todo-1',
+      title: 'Todo 1',
+      description: '',
+      status: 'todo',
+      priority: 'medium',
+      position: 0,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-01T00:00:00.000Z'
+    },
+    {
+      id: 'todo-2',
+      title: 'Todo 2',
+      description: '',
+      status: 'todo',
+      priority: 'medium',
+      position: 1,
+      createdAt: '2026-02-02T00:00:00.000Z',
+      updatedAt: '2026-02-02T00:00:00.000Z'
+    },
+    {
+      id: 'prog-1',
+      title: 'In progress 1',
+      description: '',
+      status: 'in_progress',
+      priority: 'medium',
+      position: 0,
+      createdAt: '2026-02-03T00:00:00.000Z',
+      updatedAt: '2026-02-03T00:00:00.000Z'
+    },
+    {
+      id: 'prog-2',
+      title: 'In progress 2',
+      description: '',
+      status: 'in_progress',
+      priority: 'medium',
+      position: 1,
+      createdAt: '2026-02-04T00:00:00.000Z',
+      updatedAt: '2026-02-04T00:00:00.000Z'
+    }
+  ]
+
+  function createOrderedRepository() {
+    const storage = createStorage({ driver: memoryDriver() })
+    return { storage, repository: createTaskRepository(storage, orderedSeed) }
+  }
+
+  function idsOf(tasks: Task[], status: Task['status']) {
+    return tasks
+      .filter((task) => task.status === status)
+      .sort((a, b) => a.position - b.position)
+      .map((task) => task.id)
+  }
+
+  it('list() returns tasks sorted by status then position, every column 0..n-1', async () => {
+    const { repository } = createOrderedRepository()
+
+    const tasks = await repository.list()
+
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-1', 'todo-2'])
+    expect(idsOf(tasks, 'in_progress')).toEqual(['prog-1', 'prog-2'])
+    for (const task of tasks) {
+      expect(Number.isInteger(task.position)).toBe(true)
+      expect(task.position).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('create() appends to the end of its column', async () => {
+    const { repository } = createOrderedRepository()
+
+    const created = await repository.create({ title: 'Todo 3', description: '', status: 'todo', priority: 'medium' })
+
+    expect(created.position).toBe(2)
+    const tasks = await repository.list()
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-1', 'todo-2', created.id])
+  })
+
+  it('update() with a status change appends to the target column and renumbers the source column', async () => {
+    const { repository } = createOrderedRepository()
+
+    const updated = await repository.update('todo-1', { status: 'in_progress' })
+
+    expect(updated?.status).toBe('in_progress')
+    expect(updated?.position).toBe(2)
+
+    const tasks = await repository.list()
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-2'])
+    expect(idsOf(tasks, 'in_progress')).toEqual(['prog-1', 'prog-2', 'todo-1'])
+  })
+
+  it('move() within a column before another task reorders it, ranks stay 0..n-1', async () => {
+    const { repository } = createOrderedRepository()
+
+    const result = await repository.move('todo-2', { status: 'todo', beforeId: 'todo-1' })
+
+    expect(result.outcome).toBe('ok')
+    const tasks = await repository.list()
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-2', 'todo-1'])
+    expect(tasks.filter((task) => task.status === 'todo').map((task) => task.position)).toEqual([0, 1])
+  })
+
+  it('move() to another column at the end changes status and renumbers both columns', async () => {
+    const { repository } = createOrderedRepository()
+
+    const result = await repository.move('todo-1', { status: 'in_progress', beforeId: null })
+
+    expect(result.outcome).toBe('ok')
+    if (result.outcome !== 'ok') return
+    expect(result.task.status).toBe('in_progress')
+    expect(result.task.position).toBe(2)
+
+    const tasks = await repository.list()
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-2'])
+    expect(tasks.filter((task) => task.status === 'todo').map((task) => task.position)).toEqual([0])
+    expect(idsOf(tasks, 'in_progress')).toEqual(['prog-1', 'prog-2', 'todo-1'])
+  })
+
+  it('move() to another column before a task inserts it there and renumbers both columns', async () => {
+    const { repository } = createOrderedRepository()
+
+    const result = await repository.move('todo-1', { status: 'in_progress', beforeId: 'prog-2' })
+
+    expect(result.outcome).toBe('ok')
+    const tasks = await repository.list()
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-2'])
+    expect(idsOf(tasks, 'in_progress')).toEqual(['prog-1', 'todo-1', 'prog-2'])
+  })
+
+  it('move() with a beforeId from another column returns invalid-before-id, list unchanged', async () => {
+    const { repository } = createOrderedRepository()
+    const before = await repository.list()
+
+    const result = await repository.move('todo-1', { status: 'todo', beforeId: 'prog-1' })
+
+    expect(result.outcome).toBe('invalid-before-id')
+    const after = await repository.list()
+    expect(after).toEqual(before)
+  })
+
+  it('move() with an unknown id returns not-found', async () => {
+    const { repository } = createOrderedRepository()
+
+    const result = await repository.move('unknown-id', { status: 'todo', beforeId: null })
+
+    expect(result.outcome).toBe('not-found')
+  })
+
+  it('remove() renumbers the remaining column', async () => {
+    const { repository } = createOrderedRepository()
+
+    await repository.remove('todo-1')
+
+    const tasks = await repository.list()
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-2'])
+    expect(tasks.find((task) => task.id === 'todo-2')?.position).toBe(0)
+  })
+
+  it('normalizes legacy tasks stored without a position, ranked by createdAt per status, without throwing', async () => {
+    const storage = createStorage({ driver: memoryDriver() })
+    const legacy = orderedSeed.map(({ position: _position, ...task }) => task)
+    await storage.setItem('list', legacy)
+    const repository = createTaskRepository(storage, seed)
+
+    const tasks = await repository.list()
+
+    expect(idsOf(tasks, 'todo')).toEqual(['todo-1', 'todo-2'])
+    expect(idsOf(tasks, 'in_progress')).toEqual(['prog-1', 'prog-2'])
+    for (const task of tasks) {
+      expect(Number.isInteger(task.position)).toBe(true)
+    }
+  })
+
+  it('10 parallel moves within a column keep ranks contiguous and every task present', async () => {
+    const { repository } = createOrderedRepository()
+
+    const moves = Array.from({ length: 10 }, (_, index) =>
+      repository.move(index % 2 === 0 ? 'todo-1' : 'todo-2', { status: 'todo', beforeId: null })
+    )
+    const results = await Promise.all(moves)
+
+    expect(results.every((result) => result.outcome === 'ok')).toBe(true)
+    const tasks = await repository.list()
+    const todoPositions = tasks.filter((task) => task.status === 'todo').map((task) => task.position).sort()
+    expect(todoPositions).toEqual([0, 1])
+    expect(idsOf(tasks, 'todo').sort()).toEqual(['todo-1', 'todo-2'])
   })
 })

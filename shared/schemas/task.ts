@@ -10,6 +10,9 @@ export const taskSchema = z.object({
   description: z.string(),
   status: taskStatusSchema,
   priority: taskPrioritySchema,
+  // Per-column rank, renumbered 0..n-1 on every mutation of that status's
+  // column. Clients never set it: create/update schemas below omit it.
+  position: z.number().int().min(0),
   createdAt: z.string(),
   updatedAt: z.string()
 })
@@ -39,3 +42,9 @@ export const updateTaskSchema = z
   .refine((patch) => Object.keys(patch).length > 0, {
     error: 'Au moins un champ est requis.'
   })
+
+/** `beforeId: null` means "end of the target column". */
+export const moveTaskSchema = z.strictObject({
+  status: taskStatusSchema,
+  beforeId: z.string().nullable()
+})

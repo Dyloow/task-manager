@@ -144,6 +144,86 @@ describe('tasks API', () => {
     expect(response.status).toBe(404)
   })
 
+  it('GET /api/tasks returns tasks with a position', async () => {
+    const response = await api('/api/tasks')
+    const tasks = (await response.json()) as Task[]
+
+    expect(tasks.length).toBeGreaterThan(0)
+    for (const task of tasks) {
+      expect(Number.isInteger(task.position)).toBe(true)
+      expect(task.position).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('POST /api/tasks/:id/move moves a task to the end of another column', async () => {
+    const createResponse = await api('/api/tasks', { method: 'POST', body: { title: 'Task to move' } })
+    const created = (await createResponse.json()) as Task
+
+    const response = await api(`/api/tasks/${created.id}/move`, {
+      method: 'POST',
+      body: { status: 'in_progress', beforeId: null }
+    })
+
+    expect(response.status).toBe(200)
+    const moved = (await response.json()) as Task
+    expect(moved.status).toBe('in_progress')
+    expect(Number.isInteger(moved.position)).toBe(true)
+  })
+
+  it('POST /api/tasks/:id/move with a beforeId from another column returns 400', async () => {
+    const createResponse = await api('/api/tasks', { method: 'POST', body: { title: 'Task A' } })
+    const taskA = (await createResponse.json()) as Task
+    const otherResponse = await api('/api/tasks', { method: 'POST', body: { title: 'Task B', status: 'in_progress' } })
+    const taskB = (await otherResponse.json()) as Task
+
+    const response = await api(`/api/tasks/${taskA.id}/move`, {
+      method: 'POST',
+      body: { status: 'todo', beforeId: taskB.id }
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('POST /api/tasks/:id/move with an unknown id returns 404', async () => {
+    const response = await api('/api/tasks/unknown-id/move', {
+      method: 'POST',
+      body: { status: 'todo', beforeId: null }
+    })
+
+    expect(response.status).toBe(404)
+  })
+
+  it('POST /api/tasks/:id/move with an invalid body returns 400', async () => {
+    const createResponse = await api('/api/tasks', { method: 'POST', body: { title: 'Task to move invalidly' } })
+    const created = (await createResponse.json()) as Task
+
+    const response = await api(`/api/tasks/${created.id}/move`, {
+      method: 'POST',
+      body: { status: 'unknown-status', beforeId: null }
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it('10 parallel moves to the same column end keep ranks contiguous', async () => {
+    const created = await Promise.all(
+      Array.from({ length: 10 }, (_, index) => api('/api/tasks', { method: 'POST', body: { title: `Movable ${index}` } }))
+    )
+    const tasks = (await Promise.all(created.map((response) => response.json()))) as Task[]
+
+    const responses = await Promise.all(
+      tasks.map((task) => api(`/api/tasks/${task.id}/move`, { method: 'POST', body: { status: 'done', beforeId: null } }))
+    )
+    expect(responses.every((response) => response.status === 200)).toBe(true)
+
+    const listResponse = await api('/api/tasks')
+    const allTasks = (await listResponse.json()) as Task[]
+    const doneTasks = allTasks.filter((task) => task.status === 'done')
+    const positions = doneTasks.map((task) => task.position).sort((a, b) => a - b)
+    expect(positions).toEqual(Array.from({ length: doneTasks.length }, (_, index) => index))
+    expect(new Set(doneTasks.map((task) => task.id)).size).toBe(doneTasks.length)
+  })
+
   it('persists exactly 20 more tasks after 20 parallel POSTs', async () => {
     const beforeResponse = await api('/api/tasks')
     const before = (await beforeResponse.json()) as Task[]

@@ -10,6 +10,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     description: 'Some description',
     status: 'todo',
     priority: 'high',
+    position: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
   createTaskSchema,
+  moveTaskSchema,
   taskPrioritySchema,
   taskStatusSchema,
   updateTaskSchema
@@ -116,6 +117,44 @@ describe('updateTaskSchema', () => {
 
   it('rejects unknown keys', () => {
     const result = updateTaskSchema.safeParse({ status: 'done', unknown: 'field' })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a client-supplied position, server-owned', () => {
+    const result = updateTaskSchema.safeParse({ status: 'done', position: 0 })
+
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('moveTaskSchema', () => {
+  it('accepts a status with a beforeId', () => {
+    const result = moveTaskSchema.safeParse({ status: 'done', beforeId: 'task-1' })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts beforeId: null for "end of the column"', () => {
+    const result = moveTaskSchema.safeParse({ status: 'done', beforeId: null })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects a missing beforeId', () => {
+    const result = moveTaskSchema.safeParse({ status: 'done' })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects an invalid status', () => {
+    const result = moveTaskSchema.safeParse({ status: 'archived', beforeId: null })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects unknown keys', () => {
+    const result = moveTaskSchema.safeParse({ status: 'done', beforeId: null, position: 0 })
 
     expect(result.success).toBe(false)
   })
