@@ -119,6 +119,9 @@ describe('index page', () => {
     expect((wrapper.find('#task-title').element as HTMLInputElement).value).toBe('')
     expect((wrapper.find('#task-title').element as HTMLInputElement).disabled).toBe(false)
 
+    // The created task matched the active filter ('all'): no hidden-task notice.
+    expect(wrapper.findAll('[role="status"]')).toHaveLength(0)
+
     // --- mutation failure: status select disabled while pending, banner + rollback after ---
     const statusSelect = wrapper.find('select[aria-label="Statut de Tâche existante"]')
     await statusSelect.setValue('done')
@@ -136,5 +139,43 @@ describe('index page', () => {
 
     await wrapper.find('[role="alert"] button').trigger('click')
     expect(wrapper.findAll('[role="alert"]')).toHaveLength(0)
+
+    // --- a task created while filtered out raises a notice, cleared by "Tout afficher" ---
+    await wrapper.vm.$router.push({ query: { status: 'done' } })
+    await flushPromises()
+
+    await wrapper.find('#task-title').setValue('Tâche masquée par le filtre')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    resolveCreate(makeTask({ id: 'hidden-task', title: 'Tâche masquée par le filtre', status: 'todo' }))
+    await flushPromises()
+    await vi.waitUntil(() => wrapper.findAll('[role="status"]').length === 1)
+
+    expect(wrapper.find('[role="status"]').text()).toContain('Tâche créée, masquée par les filtres actifs.')
+
+    await wrapper.find('[role="status"] button').trigger('click')
+    await vi.waitUntil(() => currentQuery().status === undefined)
+    await flushPromises()
+
+    expect(wrapper.findAll('[role="status"]')).toHaveLength(0)
+    expect(findStatusButton(wrapper, 'Toutes').attributes('aria-pressed')).toBe('true')
+
+    // --- changing filters directly also clears a pending notice ---
+    await wrapper.vm.$router.push({ query: { status: 'done' } })
+    await flushPromises()
+
+    await wrapper.find('#task-title').setValue('Autre tâche masquée')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    resolveCreate(makeTask({ id: 'hidden-task-2', title: 'Autre tâche masquée', status: 'todo' }))
+    await flushPromises()
+    await vi.waitUntil(() => wrapper.findAll('[role="status"]').length === 1)
+
+    await wrapper.vm.$router.push({ query: { status: 'todo' } })
+    await flushPromises()
+
+    expect(wrapper.findAll('[role="status"]')).toHaveLength(0)
   })
 })

@@ -4,7 +4,7 @@ import { ApiError, type ApiErrorState } from '~/utils/api-error'
 import { ACTION_ERROR_MESSAGES } from '~/stores/tasks'
 
 const store = useTasksStore()
-const { status: statusFilter, priority: priorityFilter, setStatus, setPriority } = useTaskFilters()
+const { status: statusFilter, priority: priorityFilter, setStatus, setPriority, resetFilters } = useTaskFilters()
 
 const { pending, error, refresh } = await useAsyncData('tasks', () => store.fetchTasks())
 
@@ -12,17 +12,27 @@ const isFormOpen = ref(false)
 const isCreating = ref(false)
 const createFormError = ref<ApiErrorState | null>(null)
 const taskFormRef = ref<{ reset: () => void } | null>(null)
+const isCreatedTaskHidden = ref(false)
 
 const filterCounts = computed(() => ({
   all: store.tasks.length,
   ...store.countsByStatus
 }))
 
+// The notice is only valid for the filters it was raised under: any change
+// (including the notice's own "Tout afficher" action) clears it.
+watch([statusFilter, priorityFilter], () => {
+  isCreatedTaskHidden.value = false
+})
+
 async function handleCreate(input: CreateTaskInput) {
   createFormError.value = null
   isCreating.value = true
   try {
-    await store.createTask(input)
+    const task = await store.createTask(input)
+    const matchesStatus = statusFilter.value === 'all' || task.status === statusFilter.value
+    const matchesPriority = priorityFilter.value === 'all' || task.priority === priorityFilter.value
+    isCreatedTaskHidden.value = !(matchesStatus && matchesPriority)
     taskFormRef.value?.reset()
     isFormOpen.value = false
   } catch (cause) {
@@ -43,11 +53,6 @@ function handleStatusChange(id: string, status: TaskStatus) {
 
 function handleDelete(id: string) {
   store.removeTask(id)
-}
-
-function resetFilters() {
-  setStatus('all')
-  setPriority('all')
 }
 </script>
 
@@ -95,6 +100,8 @@ function resetFilters() {
           @update:status="setStatus"
           @update:priority="setPriority"
         />
+
+        <TaskHiddenNotice v-if="isCreatedTaskHidden" @show-all="resetFilters" />
 
         <div
           v-if="error"

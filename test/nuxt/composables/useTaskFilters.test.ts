@@ -45,5 +45,15 @@ describe('useTaskFilters', () => {
     await vi.waitUntil(() => currentQuery().priority === 'low')
     expect(currentQuery()).toMatchObject({ status: 'in_progress', priority: 'low' })
     expect(wrapper.vm.priority).toBe('low')
+
+    // --- resetFilters clears both filters in a single navigation, not two ---
+    const pushSpy = vi.spyOn(wrapper.vm.$router, 'push')
+    await wrapper.vm.resetFilters()
+    await vi.waitUntil(() => currentQuery().status === undefined)
+
+    expect(pushSpy).toHaveBeenCalledTimes(1)
+    expect(currentQuery().priority).toBeUndefined()
+    expect(wrapper.vm.status).toBe('all')
+    expect(wrapper.vm.priority).toBe('all')
   })
 })
