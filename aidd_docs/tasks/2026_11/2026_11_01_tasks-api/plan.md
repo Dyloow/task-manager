@@ -1,6 +1,6 @@
 ---
 objective: "The task list is persisted in a JSON file and fully manageable through validated Nuxt server routes under /api/tasks."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Tasks server API
