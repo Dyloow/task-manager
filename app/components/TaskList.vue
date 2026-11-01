@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Task, TaskStatus } from '#shared/types/task'
 
-const props = defineProps<{
+defineProps<{
   tasks: Task[]
   loading: boolean
   hasAnyTask: boolean
@@ -32,7 +32,7 @@ const emit = defineEmits<{
       <p>Aucune tâche ne correspond aux filtres actuels.</p>
       <button
         type="button"
-        class="rounded-control border border-border px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-border-strong hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        class="rounded-control border border-border-control px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-ink-soft hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         @click="emit('reset-filters')"
       >
         Réinitialiser les filtres

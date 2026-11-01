@@ -3,7 +3,7 @@ import { taskStatusSchema } from '#shared/schemas/task'
 import type { Task, TaskPriority, TaskStatus } from '#shared/types/task'
 import { PRIORITY_LABELS, STATUS_LABELS } from '~/utils/task-labels'
 
-const props = defineProps<{
+defineProps<{
   task: Task
   pending: boolean
 }>()
@@ -48,23 +48,30 @@ onBeforeUnmount(() => clearTimeout(confirmTimeout))
 </script>
 
 <template>
-  <li class="flex flex-col gap-2 rounded-card border border-border bg-surface p-4" :aria-busy="pending">
+  <li
+    class="flex flex-col gap-2 rounded-card border border-border p-4"
+    :class="task.status === 'done' ? 'bg-canvas' : 'bg-surface'"
+    :aria-busy="pending"
+  >
     <span class="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-ink-soft">
       <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="PRIORITY_DOT[task.priority]" />
       {{ PRIORITY_LABELS[task.priority] }}
     </span>
 
-    <h3 class="font-medium text-ink">{{ task.title }}</h3>
-    <p v-if="task.description" class="line-clamp-2 text-sm text-ink-soft">{{ task.description }}</p>
+    <h3 class="wrap-break-word font-medium" :class="task.status === 'done' ? 'text-ink-soft line-through' : 'text-ink'">
+      {{ task.title }}
+    </h3>
+    <p v-if="task.description" class="line-clamp-2 wrap-break-word text-sm text-ink-soft">{{ task.description }}</p>
 
     <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-col gap-1">
-        <label :for="`task-status-${task.id}`" class="sr-only">Statut de {{ task.title }}</label>
+        <label :for="`task-status-${task.id}`" class="text-xs font-medium text-ink-soft">Statut</label>
         <select
           :id="`task-status-${task.id}`"
           :value="task.status"
           :disabled="pending"
-          class="rounded-control border border-border bg-surface px-2 py-1 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-ink-faint"
+          :aria-label="`Statut de ${task.title}`"
+          class="rounded-control border border-border-control bg-surface px-2 py-1 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:cursor-not-allowed disabled:text-ink-faint"
           @change="handleStatusChange"
         >
           <option v-for="option in statusOptions" :key="option" :value="option">{{ STATUS_LABELS[option] }}</option>
