@@ -1,5 +1,5 @@
 import type { CreateTaskInput, Task, TaskPriority, TaskStatus, UpdateTaskInput } from '#shared/types/task'
-import { toApiError, type ApiErrorState } from '~/utils/api-error'
+import { toApiError, type ApiError, type ApiErrorState } from '~/utils/api-error'
 
 export type StatusFilter = TaskStatus | 'all'
 export type PriorityFilter = TaskPriority | 'all'
@@ -7,6 +7,21 @@ export type PriorityFilter = TaskPriority | 'all'
 export interface TaskFilters {
   status: StatusFilter
   priority: PriorityFilter
+}
+
+// The banner shows one French sentence per action, named by what the user
+// tried to do and what happened to their change, not the server's own
+// (English, HTTP-flavoured) message. `statusCode`/`fieldErrors`/`formErrors`
+// are still kept, for the create form and for callers that need them.
+export const ACTION_ERROR_MESSAGES = {
+  load: 'Impossible de charger les tâches.',
+  create: 'Impossible de créer la tâche.',
+  update: 'Impossible de mettre à jour la tâche. Modification annulée.',
+  delete: 'Impossible de supprimer la tâche. Elle a été restaurée.'
+} as const
+
+function toActionErrorState(apiError: ApiError, action: keyof typeof ACTION_ERROR_MESSAGES): ApiErrorState {
+  return { ...apiError.toState(), message: ACTION_ERROR_MESSAGES[action] }
 }
 
 export const useTasksStore = defineStore('tasks', () => {
@@ -54,7 +69,7 @@ export const useTasksStore = defineStore('tasks', () => {
       return tasks.value
     } catch (cause) {
       const apiError = toApiError(cause)
-      error.value = apiError.toState()
+      error.value = toActionErrorState(apiError, 'load')
       throw apiError
     }
   }
@@ -66,7 +81,7 @@ export const useTasksStore = defineStore('tasks', () => {
       return task
     } catch (cause) {
       const apiError = toApiError(cause)
-      error.value = apiError.toState()
+      error.value = toActionErrorState(apiError, 'create')
       throw apiError
     }
   }
@@ -95,7 +110,7 @@ export const useTasksStore = defineStore('tasks', () => {
       if (currentIndex !== -1 && toRaw(tasks.value[currentIndex]) === optimistic) {
         tasks.value[currentIndex] = previous
       }
-      error.value = toApiError(cause).toState()
+      error.value = toActionErrorState(toApiError(cause), 'update')
     } finally {
       clearPending(id)
     }
@@ -118,7 +133,7 @@ export const useTasksStore = defineStore('tasks', () => {
         // other mutations may have changed the rest of the list meanwhile.
         const insertAt = Math.min(index, tasks.value.length)
         tasks.value = [...tasks.value.slice(0, insertAt), removed, ...tasks.value.slice(insertAt)]
-        error.value = apiError.toState()
+        error.value = toActionErrorState(apiError, 'delete')
       }
     } finally {
       clearPending(id)

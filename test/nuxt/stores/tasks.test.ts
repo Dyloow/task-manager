@@ -214,7 +214,7 @@ describe('useTasksStore', () => {
     expect(store.error).not.toBeInstanceOf(Error)
     expect(store.error).toEqual({
       statusCode: 500,
-      message: 'Task data is corrupted',
+      message: 'Impossible de charger les tâches.',
       fieldErrors: {},
       formErrors: []
     })
