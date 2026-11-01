@@ -63,4 +63,29 @@ describe('TaskBoard', () => {
 
     expect(wrapper.emitted('createInColumn')).toEqual([['in_progress']])
   })
+
+  it('focusColumnAddButton(status) focuses that column\'s "+" button', async () => {
+    const wrapper = await mountSuspended(TaskBoard, {
+      props: { tasksByStatus: tasksByStatus(), statusFilter: 'all', pendingIds: [] },
+      attachTo: document.body
+    })
+
+    ;(wrapper.vm as unknown as { focusColumnAddButton: (status: TaskStatus) => void }).focusColumnAddButton('in_progress')
+
+    const inProgressColumn = wrapper.findAllComponents(TaskColumn)[1]!
+    expect(document.activeElement).toBe(inProgressColumn.find('button').element)
+    wrapper.unmount()
+  })
+
+  it('focusColumnAddButton(status) is a silent no-op for a column hidden by the status filter', async () => {
+    const wrapper = await mountSuspended(TaskBoard, {
+      props: { tasksByStatus: tasksByStatus(), statusFilter: 'todo', pendingIds: [] },
+      attachTo: document.body
+    })
+
+    expect(() =>
+      (wrapper.vm as unknown as { focusColumnAddButton: (status: TaskStatus) => void }).focusColumnAddButton('done')
+    ).not.toThrow()
+    wrapper.unmount()
+  })
 })

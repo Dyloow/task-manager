@@ -86,4 +86,16 @@ describe('TaskColumn', () => {
 
     expect(wrapper.emitted('move')).toEqual([['high-1', 'high-2']])
   })
+
+  it('focusAddButton() moves focus to the "+ Ajouter une tâche" button', async () => {
+    const wrapper = await mountSuspended(TaskColumn, {
+      props: { status: 'todo', tasks: [], pendingIds: [] },
+      attachTo: document.body
+    })
+
+    ;(wrapper.vm as unknown as { focusAddButton: () => void }).focusAddButton()
+
+    expect(document.activeElement).toBe(wrapper.find('button').element)
+    wrapper.unmount()
+  })
 })

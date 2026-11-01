@@ -33,10 +33,10 @@ const PRIORITY_DOT: Record<TaskPriority, string> = {
         {{ PRIORITY_LABELS[task.priority] }}
       </span>
 
-      <h3 class="wrap-break-word text-sm font-medium" :class="task.status === 'done' ? 'text-ink-soft line-through' : 'text-ink'">
+      <span class="block wrap-break-word text-sm font-medium" :class="task.status === 'done' ? 'text-ink-soft line-through' : 'text-ink'">
         {{ task.title }}
-      </h3>
-      <p v-if="task.description" class="line-clamp-2 wrap-break-word text-xs text-ink-soft">{{ task.description }}</p>
+      </span>
+      <span v-if="task.description" class="line-clamp-2 block wrap-break-word text-xs text-ink-soft">{{ task.description }}</span>
     </button>
   </li>
 </template>

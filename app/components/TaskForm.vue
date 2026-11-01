@@ -128,6 +128,7 @@ defineExpose({ resetForCreate, loadForEdit })
         v-model="title"
         type="text"
         placeholder="Préparer la démo"
+        autofocus
         :disabled="pending"
         :aria-invalid="!!titleError"
         :aria-describedby="titleError ? 'task-title-error' : undefined"

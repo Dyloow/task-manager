@@ -43,8 +43,14 @@ describe('index page task modal save error', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(wrapper.find('[role="alert"]').text()).toContain("Impossible d'enregistrer les modifications.")
-    expect(wrapper.find('dialog').attributes('open')).toBeDefined()
+    // The message shows inside the dialog, not just somewhere in the DOM:
+    // a page-level banner sits visually behind the modal's backdrop.
+    const dialog = wrapper.find('dialog')
+    expect(dialog.attributes('open')).toBeDefined()
+    expect(dialog.find('[role="alert"]').text()).toContain("Impossible d'enregistrer les modifications.")
     expect((wrapper.find('#task-title').element as HTMLInputElement).value).toBe('Nouveau titre')
+
+    // No duplicate: the page's own banner (outside the dialog) stays empty.
+    expect(wrapper.findAll('main > [role="alert"]')).toHaveLength(0)
   })
 })

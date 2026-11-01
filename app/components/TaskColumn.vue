@@ -49,10 +49,17 @@ function handleAdd(event: DraggableEvent<Task>) {
   emitMove(event.newIndex)
 }
 
+const addButtonRef = ref<HTMLButtonElement | null>(null)
+
+/** Called by the page after a delete or a status-changing edit moves focus out of this column's card. */
+function focusAddButton() {
+  addButtonRef.value?.focus()
+}
+
 // Exposed for tests: driving a real SortableJS drag in a headless DOM is not
 // practical, so tests call these directly with a synthetic `newIndex`,
 // exactly as the library would after it has reordered `localTasks`.
-defineExpose({ handleUpdate, handleAdd })
+defineExpose({ handleUpdate, handleAdd, focusAddButton })
 </script>
 
 <template>
@@ -67,6 +74,8 @@ defineExpose({ handleUpdate, handleAdd })
       tag="ul"
       :group="DRAG_GROUP"
       :animation="150"
+      :delay="150"
+      :delay-on-touch-only="true"
       ghost-class="opacity-40"
       chosen-class="shadow-[0_0_0_2px_var(--color-accent)]"
       class="flex min-h-24 flex-col gap-2 rounded-card border border-dashed border-border p-2"
@@ -83,6 +92,7 @@ defineExpose({ handleUpdate, handleAdd })
     </VueDraggable>
 
     <button
+      ref="addButtonRef"
       type="button"
       class="rounded-control border border-dashed border-border-control px-3 py-2 text-left text-sm font-medium text-ink-soft hover:border-ink-soft hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       @click="emit('create')"

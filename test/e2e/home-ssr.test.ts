@@ -25,7 +25,9 @@ const DONE_TASK_TITLE = 'Initialiser le dépôt du projet'
 
 /** Titles rendered on the board, not the ones only present in the hydration payload. */
 function renderedTaskTitles(html: string): string[] {
-  return [...html.matchAll(/<h3 class="[^"]*">([^<]*)<\/h3>/g)].map((match) => match[1].replace(/&#39;/g, "'"))
+  return [...html.matchAll(/<span class="[^"]*block wrap-break-word text-sm font-medium">([^<]*)<\/span>/g)].map((match) =>
+    match[1].replace(/&#39;/g, "'")
+  )
 }
 
 /** Column headers rendered on the board (the status filter tabs also say "À faire" etc., so this scopes to `<h2>`). */

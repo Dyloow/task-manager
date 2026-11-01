@@ -29,7 +29,7 @@ describe('TaskCard', () => {
   it('strikes through the title and mutes it for a done task', async () => {
     const wrapper = await mountSuspended(TaskCard, { props: { task: makeTask({ status: 'done' }), pending: false } })
 
-    expect(wrapper.find('h3').classes()).toContain('line-through')
+    expect(wrapper.find('span.text-sm.font-medium').classes()).toContain('line-through')
   })
 
   it('emits open on click', async () => {

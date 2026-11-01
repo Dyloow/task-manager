@@ -163,4 +163,55 @@ describe('TaskModal', () => {
 
     expect(wrapper.find('dialog').attributes('open')).toBeUndefined()
   })
+
+  it('clicking the backdrop closes the dialog', async () => {
+    const wrapper = await mountSuspended(TaskModal, { props: { pending: false } })
+
+    api(wrapper).openCreate('todo')
+    await wrapper.vm.$nextTick()
+    // A click dispatched directly on the <dialog> element is a backdrop
+    // click: clicking its content would target a descendant instead.
+    await wrapper.find('dialog').trigger('click')
+
+    expect(wrapper.find('dialog').attributes('open')).toBeUndefined()
+  })
+
+  it('clicking inside the modal content does not close it', async () => {
+    const wrapper = await mountSuspended(TaskModal, { props: { pending: false } })
+
+    api(wrapper).openCreate('todo')
+    await wrapper.vm.$nextTick()
+    await wrapper.find('h2').trigger('click')
+
+    expect(wrapper.find('dialog').attributes('open')).toBeDefined()
+  })
+
+  it('shows errorMessage as a generic alert when there is no field or form error to show instead', async () => {
+    const wrapper = await mountSuspended(TaskModal, {
+      props: { pending: false, errorMessage: "Impossible d'enregistrer les modifications." }
+    })
+
+    api(wrapper).openEdit(makeTask())
+    await wrapper.vm.$nextTick()
+
+    const alerts = wrapper.findAll('[role="alert"]')
+    expect(alerts.some((alert) => alert.text() === "Impossible d'enregistrer les modifications.")).toBe(true)
+  })
+
+  it('hides the generic errorMessage alert when a field error already shows it', async () => {
+    const wrapper = await mountSuspended(TaskModal, {
+      props: {
+        pending: false,
+        errorMessage: 'Impossible de créer la tâche.',
+        serverFieldErrors: { title: ['Titre déjà utilisé.'] }
+      }
+    })
+
+    api(wrapper).openCreate('todo')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Titre déjà utilisé.')
+    const alerts = wrapper.findAll('[role="alert"]')
+    expect(alerts.some((alert) => alert.text() === 'Impossible de créer la tâche.')).toBe(false)
+  })
 })

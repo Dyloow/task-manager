@@ -21,6 +21,25 @@ const STATUSES = taskStatusSchema.options
 // column, so the status filter keeps selecting what it always selected, now
 // a column instead of a row.
 const visibleStatuses = computed<TaskStatus[]>(() => (props.statusFilter === 'all' ? STATUSES : [props.statusFilter]))
+
+interface ColumnHandle {
+  focusAddButton: () => void
+}
+
+// Only the currently rendered columns register here (a status filter can
+// hide the rest); focusing a hidden column is a silent no-op.
+const columnRefs = new Map<TaskStatus, ColumnHandle>()
+
+function registerColumnRef(status: TaskStatus, instance: ColumnHandle | null) {
+  if (instance) columnRefs.set(status, instance)
+  else columnRefs.delete(status)
+}
+
+function focusColumnAddButton(status: TaskStatus) {
+  columnRefs.get(status)?.focusAddButton()
+}
+
+defineExpose({ focusColumnAddButton })
 </script>
 
 <template>
@@ -28,6 +47,7 @@ const visibleStatuses = computed<TaskStatus[]>(() => (props.statusFilter === 'al
     <TaskColumn
       v-for="status in visibleStatuses"
       :key="status"
+      :ref="(instance) => registerColumnRef(status, instance as ColumnHandle | null)"
       :status="status"
       :tasks="tasksByStatus[status]"
       :pending-ids="pendingIds"

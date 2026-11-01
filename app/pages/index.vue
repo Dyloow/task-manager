@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CreateTaskInput, Task, TaskStatus, UpdateTaskInput } from '#shared/types/task'
-import { ApiError, type ApiErrorState } from '~/utils/api-error'
+import type { ApiErrorState } from '~/utils/api-error'
 import { ACTION_ERROR_MESSAGES } from '~/stores/tasks'
 
 const store = useTasksStore()
@@ -13,6 +13,7 @@ const modalRef = ref<{
   openEdit: (task: Task) => void
   close: () => void
 } | null>(null)
+const boardRef = ref<{ focusColumnAddButton: (status: TaskStatus) => void } | null>(null)
 const isSubmitting = ref(false)
 const modalError = ref<ApiErrorState | null>(null)
 const isCreatedTaskHidden = ref(false)
@@ -57,13 +58,13 @@ async function handleCreate(input: CreateTaskInput) {
     const matchesPriority = priorityFilter.value === 'all' || task.priority === priorityFilter.value
     isCreatedTaskHidden.value = !(matchesStatus && matchesPriority)
     modalRef.value?.close()
-  } catch (cause) {
-    // A 400 is a validation issue the form already reports inline: showing
-    // it again in the banner would duplicate the same message.
-    if (cause instanceof ApiError && cause.statusCode === 400) {
-      modalError.value = cause.toState()
-      store.clearError()
-    }
+  } catch {
+    // The store action already recorded this failure as `store.error`, with
+    // a French message and, on a 400, the field/form details: reuse all of
+    // it here rather than the page's own banner, hidden behind the modal's
+    // backdrop while it is open.
+    modalError.value = store.error
+    store.clearError()
   } finally {
     isSubmitting.value = false
   }
@@ -73,21 +74,31 @@ async function handleSave(id: string, patch: UpdateTaskInput) {
   modalError.value = null
   isSubmitting.value = true
   try {
-    await store.updateTask(id, patch)
+    const updated = await store.updateTask(id, patch)
     modalRef.value?.close()
-  } catch (cause) {
-    if (cause instanceof ApiError && cause.statusCode === 400) {
-      modalError.value = cause.toState()
-      store.clearError()
+    if (patch.status) {
+      // The card just left this column for another one: the dialog's native
+      // focus-return would target a now-unmounted trigger, so send focus to
+      // where the task landed instead.
+      nextTick(() => boardRef.value?.focusColumnAddButton(updated.status))
     }
+  } catch {
+    modalError.value = store.error
+    store.clearError()
   } finally {
     isSubmitting.value = false
   }
 }
 
 function handleDelete(id: string) {
+  const deletedStatus = store.tasks.find((task) => task.id === id)?.status
   modalRef.value?.close()
   store.removeTask(id)
+  if (deletedStatus) {
+    // The card (and the dialog's focus-return target) is gone: land focus
+    // on its column instead of letting it fall back to <body>.
+    nextTick(() => boardRef.value?.focusColumnAddButton(deletedStatus))
+  }
 }
 </script>
 
@@ -147,6 +158,7 @@ function handleDelete(id: string) {
 
     <TaskBoard
       v-else
+      ref="boardRef"
       :tasks-by-status="store.tasksByStatus"
       :status-filter="statusFilter"
       :pending-ids="store.pendingIds"
@@ -158,6 +170,7 @@ function handleDelete(id: string) {
     <TaskModal
       ref="modalRef"
       :pending="isSubmitting"
+      :error-message="modalError?.message"
       :server-field-errors="modalError?.fieldErrors"
       :server-form-errors="modalError?.formErrors"
       @create="handleCreate"

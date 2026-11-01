@@ -27,7 +27,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 }
 
 function cardTitles(wrapper: { findAll: (selector: string) => { text: () => string }[] }) {
-  return wrapper.findAll('h3').map((h3) => h3.text())
+  return wrapper.findAll('span.text-sm.font-medium').map((span) => span.text())
 }
 
 afterEach(() => {

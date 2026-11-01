@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { CreateTaskInput, Task, TaskStatus, UpdateTaskInput } from '#shared/types/task'
 
-defineProps<{
+const props = defineProps<{
   pending: boolean
+  errorMessage?: string | null
   serverFieldErrors?: Record<string, string[]>
   serverFormErrors?: string[]
 }>()
@@ -28,6 +29,15 @@ function cancelDeleteConfirm() {
   clearTimeout(confirmTimeout)
 }
 
+// A 400 already shows field/form errors inline in the form: a generic
+// banner on top would just repeat it. Anything else (network, 500...) has no
+// field to attach to, so this is the only place it can surface while the
+// modal hides the page banner behind its backdrop.
+const hasDetailedError = computed(
+  () => Object.keys(props.serverFieldErrors ?? {}).length > 0 || (props.serverFormErrors ?? []).length > 0
+)
+const showGenericError = computed(() => Boolean(props.errorMessage) && !hasDetailedError.value)
+
 function openCreate(status: TaskStatus = 'todo') {
   mode.value = 'create'
   editingTask.value = null
@@ -48,6 +58,14 @@ function close() {
   // `<dialog>` restores focus to the element that triggered `showModal()` on
   // `close()`; the `close` event below keeps the rest of our state in sync.
   dialogRef.value?.close()
+}
+
+function handleBackdropClick(event: MouseEvent) {
+  // The backdrop is the `<dialog>` element itself; a click on its content
+  // targets a descendant, never the dialog, so this only fires for the backdrop.
+  if (event.target === dialogRef.value) {
+    close()
+  }
 }
 
 function handleDialogClosed() {
@@ -91,9 +109,10 @@ defineExpose({ openCreate, openEdit, close })
   <dialog
     ref="dialogRef"
     :aria-labelledby="TITLE_ID"
-    class="w-[calc(100%-2rem)] max-w-md rounded-card border border-border bg-surface p-0 text-ink backdrop:bg-ink/50"
+    class="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-card border border-border bg-surface p-0 text-ink backdrop:bg-ink/50"
     @close="handleDialogClosed"
     @cancel="cancelDeleteConfirm"
+    @click="handleBackdropClick"
   >
     <div class="flex flex-col gap-4 p-5">
       <div class="flex items-center justify-between gap-3">
@@ -109,6 +128,8 @@ defineExpose({ openCreate, openEdit, close })
           &times;
         </button>
       </div>
+
+      <p v-if="showGenericError" role="alert" class="text-sm text-danger">{{ errorMessage }}</p>
 
       <TaskForm
         ref="formRef"
