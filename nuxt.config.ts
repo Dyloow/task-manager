@@ -7,6 +7,14 @@ export default defineNuxtConfig({
   vite: {
     plugins: [tailwindcss()]
   },
+  nitro: {
+    storage: {
+      tasks: {
+        driver: 'fs',
+        base: '.data/tasks'
+      }
+    }
+  },
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true }
 })
