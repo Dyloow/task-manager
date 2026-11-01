@@ -14,15 +14,15 @@ flowchart LR
     Store -- "$fetch /api/tasks" --> Routes[server/api/tasks]
     Routes --> Repo[server/utils task repository]
     Repo --> File[(JSON file)]
-    Shared[shared/ types + schemas] -.-> Store
+    Shared[shared/ types, schemas, task order] -.-> Store
     Shared -.-> Routes
 ```
 
 ## Key decisions
 
 - Initial load runs on the server via `useAsyncData` calling the store action, so the store is hydrated in the SSR payload, not refetched on the client.
-- Types and Zod schemas live once in `shared/` and are imported by both app and server: one contract, no drift.
-- The server is the source of truth: the store applies a mutation optimistically and rolls back if the route fails.
+- Types, Zod schemas and the per-column ordering algorithm (`columnOf`/`assignColumnPositions`/`applyMove`) live once in `shared/` and are imported by both app and server: one contract, no drift.
+- The server is the source of truth. Mutations split by how safely they can be undone: deleting is optimistic with a targeted rollback (the one task, reinserted); a drag-and-drop move is optimistic too, but a failure resyncs the whole board from the server instead of a targeted rollback (a move rewrites ranks across two columns); creating and editing a task are pessimistic, waiting for the server so a field-level `400` can be reported before anything changes.
 - Writes to the JSON file are serialized through a single queue to keep the file consistent under concurrent requests.
 - No separate backend nor database, by brief.
 

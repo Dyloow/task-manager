@@ -103,8 +103,9 @@ server/
 └── data/tasks.json            jeu de données de démonstration (seed)
 
 shared/
-├── types/task.ts              types TypeScript dérivés des schémas
-└── schemas/task.ts            schémas Zod, contrat unique utilisé par le client et le serveur
+├── types/task.ts               types TypeScript dérivés des schémas
+├── schemas/task.ts             schémas Zod, contrat unique utilisé par le client et le serveur
+└── utils/task-order.ts         algorithme d'ordre par colonne, utilisé par le dépôt de tâches (serveur) et le store (optimiste)
 
 test/
 ├── unit/                      logique serveur et schémas, Node pur
@@ -138,7 +139,8 @@ Le corps de `POST /api/tasks/:id/move` est `{ status, beforeId }` : `status` est
 | File d'écriture unique dans le dépôt de tâches                          | Lecture-modification-écriture atomique au sein d'un même processus Node ; ne protège pas une donnée partagée entre plusieurs instances (déploiement multi-process ou serverless), limite assumée vu le stockage fichier |
 | Validation Zod à chaque lecture du fichier, pas seulement à l'écriture  | Détecte un fichier corrompu ou édité à la main avant de le renvoyer au client, au prix d'un `safeParse` sur chaque requête |
 | `position` : rang entier par colonne, renuméroté `0..n-1` à chaque mutation | Simple et sans dérive de flottants ; la colonne est l'unité d'ordre. Une route dédiée (`POST .../move`) calcule ce rang côté serveur à partir d'un `beforeId`, plutôt que le client n'envoie un index brut, fragile dès qu'un filtre masque des cartes ou qu'une autre mutation s'intercale |
-| `vue-draggable-plus` (SortableJS) pour le glisser-déposer                | Seule librairie testée dans le dépôt (`node_modules`) avant usage : composant `VueDraggable`, props `group`/`animation`, événements `update` (réordre dans une liste) et `add` (dépôt venant d'une autre liste). Elle ne touche jamais le store Pinia directement : chaque colonne garde une copie locale (`localTasks`) que la librairie réordonne visuellement, la page calcule le `beforeId` et appelle l'action du store, seule source de vérité |
+| Algorithme d'ordre (`columnOf`, `assignColumnPositions`, `applyMove`) dans `shared/utils/task-order.ts` | Le serveur (seule source de vérité) et le store (mise à jour optimiste) doivent appliquer exactement la même règle de classement ; les garder dans deux copies aurait fini par diverger |
+| `vue-draggable-plus` (SortableJS) pour le glisser-déposer                | Choisie pour le support tactile natif (glisser au doigt, pas seulement à la souris), les groupes entre listes (déplacer une carte d'une colonne à une autre) et une empreinte réduite (wrapper fin autour de SortableJS, pas un framework de DnD complet). Elle ne touche jamais le store Pinia directement : chaque colonne garde une copie locale (`localTasks`) que la librairie réordonne visuellement ; c'est la colonne (`TaskColumn`) qui calcule le `beforeId` à partir de cette copie et l'émet, la page se contente d'appeler l'action du store, seule source de vérité |
 | Pas de `<ClientOnly>` autour du glisser-déposer                         | `vue-draggable-plus` n'accède au DOM/`Sortable` qu'au montage (`onMounted`), jamais à l'import ni au rendu du composant : la liste de cartes est donc rendue côté serveur comme n'importe quel composant, et le glisser-déposer s'active seul une fois monté côté client, sans composant supplémentaire |
 | Déplacement optimiste, édition pessimiste                               | Un glisser-déposer doit répondre à l'image ; son échec est rare et sans accumulation d'état à annuler proprement (deux colonnes réordonnées) : en cas d'échec, le tableau est simplement resynchronisé depuis le serveur (`fetchTasks`). Une édition de champ (titre, description...) doit au contraire pouvoir renvoyer une erreur de champ précise avant de toucher l'affichage : elle attend la réponse du serveur |
 | `<dialog>` natif pour la modale de tâche                                | Gestion native du focus, de la touche Échap et du fond (`::backdrop`), sans dépendance ; une seule instance de modale et de formulaire, réinitialisée (`resetForCreate`/`loadForEdit`) à chaque ouverture plutôt que démontée/remontée |
