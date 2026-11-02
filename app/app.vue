@@ -1,5 +1,20 @@
+<script setup lang="ts">
+useHead({
+  htmlAttrs: { lang: 'fr' },
+  title: 'Tâches',
+  link: [
+    { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+    { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+    {
+      rel: 'stylesheet',
+      href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap'
+    }
+  ]
+})
+</script>
+
 <template>
-  <main class="min-h-screen bg-slate-50 p-6 text-slate-900">
-    <h1 class="text-2xl font-semibold">Task Manager</h1>
-  </main>
+  <div class="min-h-screen bg-canvas font-sans text-ink antialiased">
+    <NuxtPage />
+  </div>
 </template>

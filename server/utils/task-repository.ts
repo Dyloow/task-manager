@@ -1,28 +1,73 @@
 import { createError } from 'h3'
 import { z } from 'zod'
 import type { Storage } from 'unstorage'
-import type { CreateTaskInput, Task, UpdateTaskInput } from '#shared/types/task'
-import { taskSchema } from '../../shared/schemas/task'
+import type { CreateTaskInput, MoveTaskInput, Task, TaskStatus, UpdateTaskInput } from '#shared/types/task'
+import { taskSchema, taskStatusSchema } from '../../shared/schemas/task'
+import { applyMove as applyMoveOrder, assignColumnPositions, columnOf, replaceColumn } from '../../shared/utils/task-order'
 import seedTasks from '../data/tasks.json'
 
 const TASKS_KEY = 'list'
+
+// Data written before `position` existed still loads: accept it missing on
+// read, `normalizePositions` always fills it in before any task leaves this file.
+const storedTaskSchema = taskSchema.extend({ position: taskSchema.shape.position.optional() })
+type StoredTask = z.infer<typeof storedTaskSchema>
+
+const STATUS_ORDER = taskStatusSchema.options
+
+export type MoveResult =
+  | { outcome: 'ok', task: Task }
+  | { outcome: 'not-found' }
+  | { outcome: 'invalid-before-id' }
 
 export interface TaskRepository {
   list(): Promise<Task[]>
   create(input: CreateTaskInput): Promise<Task>
   update(id: string, patch: UpdateTaskInput): Promise<Task | null>
   remove(id: string): Promise<boolean>
+  move(id: string, input: MoveTaskInput): Promise<MoveResult>
 }
 
 function createCorruptedDataError() {
   return createError({ statusCode: 500, statusMessage: 'Task data is corrupted' })
 }
 
+/**
+ * Fills in any missing `position`: a column where every task already has one
+ * keeps it (just compacted to `0..n-1`); a column with any legacy task
+ * (missing `position`) is instead ranked by `createdAt` ascending.
+ */
+function normalizePositions(tasks: StoredTask[]): Task[] {
+  const byStatus = new Map<TaskStatus, StoredTask[]>()
+  for (const task of tasks) {
+    const column = byStatus.get(task.status) ?? []
+    column.push(task)
+    byStatus.set(task.status, column)
+  }
+
+  const normalized: Task[] = []
+  for (const column of byStatus.values()) {
+    const ordered = column.every((task) => task.position !== undefined)
+      ? [...column].sort((a, b) => a.position! - b.position!)
+      : [...column].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    ordered.forEach((task, index) => normalized.push({ ...task, position: index }))
+  }
+  return normalized
+}
+
+/** Final API order: by status column (`todo`, `in_progress`, `done`), then rank within it. */
+function sortTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    const statusDiff = STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)
+    return statusDiff !== 0 ? statusDiff : a.position - b.position
+  })
+}
+
 export function createTaskRepository(storage: Storage, seed: unknown): TaskRepository {
   let queue: Promise<unknown> = Promise.resolve()
 
-  function parseTasks(value: unknown): Task[] {
-    const result = taskSchema.array().safeParse(value)
+  function parseStoredTasks(value: unknown): StoredTask[] {
+    const result = storedTaskSchema.array().safeParse(value)
     if (!result.success) {
       // Keep the details in the server log, never in the response.
       console.error(`[tasks] stored data is invalid:\n${z.prettifyError(result.error)}`)
@@ -34,11 +79,11 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
   async function readTasks(): Promise<Task[]> {
     const stored = await storage.getItem<unknown>(TASKS_KEY)
     if (stored === null) {
-      const seeded = parseTasks(seed)
+      const seeded = normalizePositions(parseStoredTasks(seed))
       await storage.setItem(TASKS_KEY, seeded)
       return seeded
     }
-    return parseTasks(stored)
+    return normalizePositions(parseStoredTasks(stored))
   }
 
   // Reads and writes chain on this single queue, in call order, so a read
@@ -60,7 +105,7 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
 
   return {
     list() {
-      return enqueue((tasks) => tasks)
+      return enqueue((tasks) => sortTasks(tasks))
     },
 
     create(input) {
@@ -72,6 +117,7 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
           description: input.description,
           status: input.status,
           priority: input.priority,
+          position: columnOf(tasks, input.status).length,
           createdAt: now,
           updatedAt: now
         }
@@ -81,29 +127,56 @@ export function createTaskRepository(storage: Storage, seed: unknown): TaskRepos
 
     update(id, patch) {
       return enqueueWrite((tasks) => {
-        const index = tasks.findIndex((task) => task.id === id)
-        const existing = tasks[index]
+        const existing = tasks.find((task) => task.id === id)
         if (!existing) {
           return { tasks, result: null }
         }
-        const updated: Task = {
-          ...existing,
-          ...patch,
-          updatedAt: new Date().toISOString()
+
+        const now = new Date().toISOString()
+        const statusChanged = patch.status !== undefined && patch.status !== existing.status
+
+        if (!statusChanged) {
+          const updated: Task = { ...existing, ...patch, updatedAt: now }
+          return { tasks: tasks.map((task) => (task.id === id ? updated : task)), result: updated }
         }
-        const nextTasks = [...tasks]
-        nextTasks[index] = updated
+
+        // A status change always appends to the end of the target column: it
+        // has no `beforeId` to place it more precisely, unlike `move`.
+        const targetStatus = patch.status!
+        const withoutExisting = tasks.filter((task) => task.id !== id)
+        const sourceColumn = assignColumnPositions(columnOf(withoutExisting, existing.status))
+        const targetColumnBefore = columnOf(withoutExisting, targetStatus)
+        const updated: Task = { ...existing, ...patch, position: targetColumnBefore.length, updatedAt: now }
+
+        let nextTasks = withoutExisting.filter(
+          (task) => task.status !== existing.status && task.status !== targetStatus
+        )
+        nextTasks = [...nextTasks, ...sourceColumn, ...targetColumnBefore, updated]
+
         return { tasks: nextTasks, result: updated }
       })
     },
 
     remove(id) {
       return enqueueWrite((tasks) => {
-        const exists = tasks.some((task) => task.id === id)
-        if (!exists) {
+        const existing = tasks.find((task) => task.id === id)
+        if (!existing) {
           return { tasks, result: false }
         }
-        return { tasks: tasks.filter((task) => task.id !== id), result: true }
+        const withoutExisting = tasks.filter((task) => task.id !== id)
+        const compacted = assignColumnPositions(columnOf(withoutExisting, existing.status))
+        return { tasks: replaceColumn(withoutExisting, existing.status, compacted), result: true }
+      })
+    },
+
+    move(id, input) {
+      return enqueueWrite<MoveResult>((tasks) => {
+        const result = applyMoveOrder(tasks, id, input.status, input.beforeId, new Date().toISOString())
+
+        if (result.outcome !== 'ok') {
+          return { tasks, result: { outcome: result.outcome } }
+        }
+        return { tasks: result.tasks, result: { outcome: 'ok', task: result.task } }
       })
     }
   }

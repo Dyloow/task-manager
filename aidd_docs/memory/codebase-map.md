@@ -14,7 +14,7 @@ flowchart TD
 - `server/api/`: HTTP routes, one file per method (`index.get.ts`, `[id].patch.ts`...).
 - `server/utils/`: task repository (file read/write, write queue), auto-imported by Nitro.
 - `server/data/`: seed JSON used to initialize the data file.
-- `shared/`: task types and Zod schemas shared by app and server.
+- `shared/`: task types, Zod schemas and the per-column task-ordering algorithm, shared by app and server.
 - `test/unit/`: pure Node tests (server logic, schemas). `test/nuxt/`: tests needing the Nuxt runtime (stores, components).
 
 ## Entry points
